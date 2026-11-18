@@ -1,0 +1,6 @@
+{
+  "name": "Radar da Caça - Frota Urbana",
+  "description": "Mapa GPS interativo para caça ao tesouro urbana de frota de veículos em ruas reais.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": []
+}

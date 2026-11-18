@@ -1,0 +1,111 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+@layer base {
+  :root {
+    --font-display: 'Plus Jakarta Sans', system-ui, sans-serif;
+    --font-sans: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    font-family: var(--font-sans);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+  }
+
+  .font-mono-tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.leaflet-container {
+  font-family: var(--font-sans);
+  background: #e2e8f0;
+  touch-action: pan-x pan-y;
+}
+
+.radar-vehicle-pin,
+.radar-store-pin {
+  background: transparent;
+  border: none;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 16px;
+  padding: 0;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.22);
+  border: 1px solid #cbd5e1;
+}
+
+.leaflet-popup-content {
+  margin: 0;
+  width: auto !important;
+}
+
+.leaflet-popup-tip {
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.14);
+}
+
+.leaflet-control-attribution {
+  font-size: 10px !important;
+  background: rgba(255, 255, 255, 0.85) !important;
+  color: #475569 !important;
+}
+
+/* Animação do círculo de perímetro em alerta (piscando em vermelho no SVG do Leaflet) */
+@keyframes radarCirclePulse {
+  0%, 100% {
+    stroke: #dc2626;
+    stroke-opacity: 0.95;
+    fill: #ef4444;
+    fill-opacity: 0.22;
+  }
+  50% {
+    stroke: #991b1b;
+    stroke-opacity: 0.35;
+    fill: #ef4444;
+    fill-opacity: 0.05;
+  }
+}
+
+path.radar-circle-alert {
+  animation: radarCirclePulse 1.15s ease-in-out infinite;
+}
+
+/* Animação de pino piscante (ex: Triângulo de Alerta) */
+@keyframes radarPinPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.78;
+  }
+}
+
+.radar-pin-pulse {
+  animation: radarPinPulse 1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after, path.radar-circle-alert, .radar-pin-pulse {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Máscara visual para neutralizar autocomplete e pop-up de salvar senha do navegador */
+.masked-secret-input {
+  -webkit-text-security: disc;
+  text-security: disc;
+}
+
