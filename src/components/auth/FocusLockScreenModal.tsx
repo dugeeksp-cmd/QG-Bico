@@ -15,7 +15,7 @@ interface FocusLockScreenModalProps {
   isQuickTestSession: boolean;
   onVerifyPassword: (password: string) => Promise<boolean>;
   onUnlock: () => void;
-  onLogout: () => Promise<void>;
+  onRequestExit: () => void;
 }
 
 function getInitials(name: string): string {
@@ -30,7 +30,7 @@ export const FocusLockScreenModal: React.FC<FocusLockScreenModalProps> = ({
   isQuickTestSession,
   onVerifyPassword,
   onUnlock,
-  onLogout,
+  onRequestExit,
 }) => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -209,13 +209,12 @@ export const FocusLockScreenModal: React.FC<FocusLockScreenModalProps> = ({
             onClick={() => {
               setPassword('');
               setError(null);
-              onUnlock();
-              void onLogout();
+              onRequestExit();
             }}
-            className="w-full min-h-[44px] px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center justify-center gap-2"
+            className="w-full min-h-[44px] px-4 rounded-xl bg-slate-800 hover:bg-red-700 text-slate-200 hover:text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors"
           >
             <LogOut className="w-4 h-4" />
-            <span>Trocar Usuário / Sair da Conta</span>
+            <span>Encerrar Sessão / Sair do Sistema</span>
           </button>
         </div>
       </div>

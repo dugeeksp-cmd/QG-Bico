@@ -1,15 +1,15 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Lock } from 'lucide-react';
 
 interface PanicFloatingButtonProps {
-  onDestroySession: () => void;
+  onRequestExit: () => void;
 }
 
 const BUTTON_SIZE = 48;
 const MARGIN = 12;
 
 export const PanicFloatingButton: React.FC<PanicFloatingButtonProps> = ({
-  onDestroySession,
+  onRequestExit,
 }) => {
   const [pos, setPos] = useState<{ x: number; y: number }>(() => {
     if (typeof window === 'undefined') return { x: 24, y: 120 };
@@ -19,8 +19,8 @@ export const PanicFloatingButton: React.FC<PanicFloatingButtonProps> = ({
     };
   });
 
-  const onDestroySessionRef = useRef(onDestroySession);
-  onDestroySessionRef.current = onDestroySession;
+  const onRequestExitRef = useRef(onRequestExit);
+  onRequestExitRef.current = onRequestExit;
 
   const draggingRef = useRef<{
     active: boolean;
@@ -39,15 +39,6 @@ export const PanicFloatingButton: React.FC<PanicFloatingButtonProps> = ({
     origY: 0,
     moved: false,
   });
-
-  const executeInstantExit = useCallback(() => {
-    onDestroySessionRef.current();
-    try {
-      window.location.replace('https://www.google.com');
-    } catch {
-      window.location.href = 'https://www.google.com';
-    }
-  }, []);
 
   // Mantém a bolinha sempre dentro da viewport ao redimensionar a janela
   useEffect(() => {
@@ -93,7 +84,7 @@ export const PanicFloatingButton: React.FC<PanicFloatingButtonProps> = ({
       drag.active = false;
       drag.pointerId = null;
       if (wasClick) {
-        executeInstantExit();
+        onRequestExitRef.current();
       }
     };
 
@@ -105,7 +96,7 @@ export const PanicFloatingButton: React.FC<PanicFloatingButtonProps> = ({
       window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('pointercancel', handlePointerUp);
     };
-  }, [executeInstantExit]);
+  }, []);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -123,7 +114,7 @@ export const PanicFloatingButton: React.FC<PanicFloatingButtonProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      executeInstantExit();
+      onRequestExitRef.current();
     }
   };
 
@@ -139,8 +130,8 @@ export const PanicFloatingButton: React.FC<PanicFloatingButtonProps> = ({
         type="button"
         onPointerDown={handlePointerDown}
         onKeyDown={handleKeyDown}
-        aria-label="Saída rápida imediata (arraste para mover, 1 toque para sair)"
-        title="Arraste para mover · 1 toque limpa sessão e sai imediatamente"
+        aria-label="Sair do sistema com confirmação (arraste para mover)"
+        title="Arraste para mover · Toque para encerrar sessão (com confirmação)"
         className="w-12 h-12 rounded-full bg-slate-900 hover:bg-red-700 active:scale-95 text-white border-2 border-slate-700 shadow-xl flex items-center justify-center touch-none cursor-grab active:cursor-grabbing select-none transition-all"
       >
         <Lock className="w-5 h-5 text-amber-300 pointer-events-none" />

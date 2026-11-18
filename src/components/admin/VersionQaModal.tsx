@@ -35,7 +35,7 @@ const SECTION_META: {
 }[] = [
   {
     key: 'features',
-    title: 'Funcionalidades Criadas (v1.0 a v4.5-RC)',
+    title: 'Funcionalidades Criadas (v1.0 a v5.0)',
     subtitle: 'Entregas já implementadas para validação de qualidade.',
   },
   {
@@ -306,16 +306,16 @@ export const VersionQaModal: React.FC<VersionQaModalProps> = ({
           </button>
         </div>
 
-        {/* Alerta de Revisão Crítica v4.5-RC */}
+        {/* Banner Fase Conectividade v5.0 */}
         <div
-          role="alert"
-          className="px-5 sm:px-6 py-3 bg-red-50 border-b border-red-200 flex flex-wrap items-center gap-2.5"
+          role="status"
+          className="px-5 sm:px-6 py-3 bg-blue-50 border-b border-blue-200 flex flex-wrap items-center gap-2.5"
         >
-          <span className="px-2 py-0.5 rounded-md bg-red-600 text-white text-[11px] font-extrabold uppercase tracking-wide shrink-0">
-            REVISÃO CRÍTICA
+          <span className="px-2 py-0.5 rounded-md bg-blue-700 text-white text-[11px] font-extrabold uppercase tracking-wide shrink-0">
+            VERSÃO 5.0 · CONECTIVIDADE
           </span>
-          <span className="text-xs sm:text-sm font-extrabold text-red-900">
-            Validar saída imediata em 1 toque no botão flutuante do cadeado
+          <span className="text-xs sm:text-sm font-extrabold text-blue-950">
+            Confirmação segura no cadeado com redirecionamento externo para google.com e pipeline GitHub Actions (FTP) ativo
           </span>
         </div>
 

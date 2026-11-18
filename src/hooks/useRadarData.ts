@@ -58,7 +58,7 @@ export function useRadarData() {
   const [occurrences, setOccurrences] = useState<MapOccurrence[]>([]);
   const [alertAudit, setAlertAudit] = useState<AlertAuditEntry[]>([]);
   const [qaChangelog, setQaChangelog] = useState<QaChangelogState>({
-    version: '4.5-RC',
+    version: '5.0',
     items: [],
   });
   const [loading, setLoading] = useState(true);

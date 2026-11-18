@@ -57,7 +57,7 @@ interface NavigationDrawerProps {
   onToggleOnlineVisibility: (visible: boolean) => Promise<void>;
   onTogglePublicProfile: (isPublic: boolean) => Promise<void>;
   onOpenVersionQa: () => void;
-  onLogout: () => Promise<void>;
+  onRequestExit: () => void;
   onClose: () => void;
 }
 
@@ -80,7 +80,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   onToggleOnlineVisibility,
   onTogglePublicProfile,
   onOpenVersionQa,
-  onLogout,
+  onRequestExit,
   onClose,
 }) => {
   if (!isOpen) return null;
@@ -451,7 +451,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
             type="button"
             onClick={() => {
               onClose();
-              void onLogout();
+              onRequestExit();
             }}
             className="w-full min-h-[46px] px-4 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 text-sm font-bold flex items-center justify-center gap-2 transition-colors"
           >

@@ -21,6 +21,7 @@ import { StoreOpenPromptModal } from './components/auth/StoreOpenPromptModal';
 import { StoreOpeningWithdrawalModal } from './components/auth/StoreOpeningWithdrawalModal';
 import { NavigationDrawer } from './components/layout/NavigationDrawer';
 import { PanicFloatingButton } from './components/layout/PanicFloatingButton';
+import { ExitConfirmModal } from './components/layout/ExitConfirmModal';
 import { SharedRadarMapView } from './components/map/SharedRadarMapView';
 import { MessagesModal } from './components/map/MessagesModal';
 import { CloseStoreSalesModal } from './components/map/CloseStoreSalesModal';
@@ -120,7 +121,6 @@ export default function App() {
     login,
     loginAsTestSuperAdmin,
     verifySessionPassword,
-    logout,
     destroySessionQuickExit,
     setHighManagementOnlineVisibility,
     setUserPublicProfile,
@@ -182,6 +182,8 @@ export default function App() {
   const [chatModalOpen, setChatModalOpen] = useState(false);
   const [qaModalOpen, setQaModalOpen] = useState(false);
   const [isFocusLocked, setIsFocusLocked] = useState(false);
+  const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
+  const [isRedirectingOut, setIsRedirectingOut] = useState(false);
   const [closingModalStore, setClosingModalStore] =
     useState<StoreUnit | null>(null);
   const [openingWithdrawalStore, setOpeningWithdrawalStore] =
@@ -236,6 +238,7 @@ export default function App() {
       setDrawerOpen(false);
       setChatModalOpen(false);
       setQaModalOpen(false);
+      setExitConfirmOpen(false);
       setClosingModalStore(null);
       setOpeningWithdrawalStore(null);
       setQueuedOpenStoreIds([]);
@@ -250,6 +253,7 @@ export default function App() {
     setDrawerOpen(false);
     setChatModalOpen(false);
     setQaModalOpen(false);
+    setExitConfirmOpen(false);
     setClosingModalStore(null);
     setOpeningWithdrawalStore(null);
     setQueuedOpenStoreIds([]);
@@ -402,6 +406,14 @@ export default function App() {
     ).length;
   }, [currentUser, chatRooms, chatMessages]);
 
+  if (isRedirectingOut) {
+    return (
+      <div className="h-dvh flex items-center justify-center bg-slate-950 text-white text-sm font-semibold px-4 text-center">
+        Sessão encerrada. Saindo do sistema...
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="h-dvh flex items-center justify-center bg-slate-50 text-slate-700 text-sm font-semibold">
@@ -419,6 +431,18 @@ export default function App() {
       />
     );
   }
+
+  const handleConfirmExternalExit = () => {
+    setExitConfirmOpen(false);
+    setIsFocusLocked(false);
+    setIsRedirectingOut(true);
+    destroySessionQuickExit();
+    try {
+      window.location.replace('https://www.google.com');
+    } catch {
+      window.location.href = 'https://www.google.com';
+    }
+  };
 
   const resolvedScreen: AppScreenKey = isScreenAllowedForUser(
     currentUser,
@@ -833,7 +857,7 @@ export default function App() {
         onToggleOnlineVisibility={setHighManagementOnlineVisibility}
         onTogglePublicProfile={setUserPublicProfile}
         onOpenVersionQa={() => setQaModalOpen(true)}
-        onLogout={logout}
+        onRequestExit={() => setExitConfirmOpen(true)}
         onClose={() => setDrawerOpen(false)}
       />
 
@@ -913,8 +937,8 @@ export default function App() {
         />
       )}
 
-      {/* Botão Flutuante Arrastável de Saída Rápida / Destruição de Sessão */}
-      <PanicFloatingButton onDestroySession={destroySessionQuickExit} />
+      {/* Botão Flutuante Arrastável do Cadeado (abre confirmação antes de sair) */}
+      <PanicFloatingButton onRequestExit={() => setExitConfirmOpen(true)} />
 
       {/* Tela de Bloqueio Automático Anti-Espião (Perda de Foco / Minimização / Troca de Guia) */}
       <FocusLockScreenModal
@@ -923,7 +947,14 @@ export default function App() {
         isQuickTestSession={isQuickTestSession}
         onVerifyPassword={verifySessionPassword}
         onUnlock={() => setIsFocusLocked(false)}
-        onLogout={logout}
+        onRequestExit={() => setExitConfirmOpen(true)}
+      />
+
+      {/* Modal de Confirmação Obrigatória de Saída e Redirecionamento Externo */}
+      <ExitConfirmModal
+        isOpen={exitConfirmOpen}
+        onCancel={() => setExitConfirmOpen(false)}
+        onConfirmExit={handleConfirmExternalExit}
       />
     </div>
   );

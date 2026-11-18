@@ -8,7 +8,7 @@ interface LoginViewProps {
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({
-  version = '4.5-RC',
+  version = '5.0',
   onLogin,
   onQuickTestLogin,
 }) => {

@@ -860,6 +860,24 @@ function getV45QaItems(): QaChecklistItem[] {
   }));
 }
 
+function getV50QaItems(): QaChecklistItem[] {
+  const now = Date.now();
+  const titles = [
+    '[v5.0] Modal de confirmação obrigatório no botão do cadeado/saída, limpeza de sessão ativa e redirecionamento externo forçado para https://www.google.com',
+    '[v5.0] Build estático Vite otimizado (base: "./" e outDir: "dist") para hospedagem na raiz ou subpastas',
+    '[v5.0] Pipeline CI/CD via GitHub Actions (.github/workflows/deploy.yml) com deploy FTP automatizado',
+  ];
+  return titles.map((title, i) => ({
+    id: `qa-v50-${i + 1}`,
+    section: 'features' as const,
+    title,
+    done: true,
+    qaStatus: 'pending' as const,
+    versionTag: '5.0',
+    createdAt: now + 480 + i,
+  }));
+}
+
 function getRequiredRoadmapItems(): QaChecklistItem[] {
   const now = Date.now();
   const titles = [
@@ -904,7 +922,7 @@ function createSeedQaChangelog(): QaChangelogState {
   }));
 
   return {
-    version: '4.5-RC',
+    version: '5.0',
     items: [
       ...v1Features,
       ...getV2QaItems(),
@@ -915,6 +933,7 @@ function createSeedQaChangelog(): QaChangelogState {
       ...getV43QaItems(),
       ...getV44QaItems(),
       ...getV45QaItems(),
+      ...getV50QaItems(),
       ...getRequiredRoadmapItems(),
     ],
     releases: [
@@ -978,6 +997,13 @@ function createSeedQaChangelog(): QaChangelogState {
         releaseType: 'minor',
         summary:
           'Saída instantânea em 1 toque no cadeado flutuante, Chat & Mensagens global unificado no Drawer e Estoque Atual por Zona de SP com semáforo e vendas do dia',
+        releasedAt: now - 60000,
+      },
+      {
+        version: '5.0',
+        releaseType: 'major',
+        summary:
+          'v5.0 (Major): Início da fase de Conectividade — Pipeline CI/CD via GitHub Actions com deploy FTP automatizado, build estático Vite otimizado e correção de segurança no botão de cadeado (modal de confirmação + redirecionamento externo para Google).',
         releasedAt: now,
       },
     ],
@@ -1526,6 +1552,13 @@ class MultiOrgDataService {
           }
         });
 
+        getV50QaItems().forEach((v50Item) => {
+          if (!nextItems.some((item) => item.id === v50Item.id)) {
+            nextItems.push(v50Item);
+            qaChanged = true;
+          }
+        });
+
         getRequiredRoadmapItems().forEach((roadItem) => {
           const normalizedTitle = roadItem.title.toLowerCase();
           const alreadyExists = nextItems.some(
@@ -1561,9 +1594,10 @@ class MultiOrgDataService {
           nextVersion === '4.0' ||
           nextVersion === '4.2-UI' ||
           nextVersion === '4.3-UI' ||
-          nextVersion === '4.4-Final'
+          nextVersion === '4.4-Final' ||
+          nextVersion === '4.5-RC'
         ) {
-          nextVersion = '4.5-RC';
+          nextVersion = '5.0';
           qaChanged = true;
         }
 
@@ -1662,6 +1696,17 @@ class MultiOrgDataService {
             releaseType: 'minor',
             summary:
               'Saída instantânea em 1 toque no cadeado flutuante, Chat & Mensagens global unificado no Drawer e Estoque Atual por Zona de SP com semáforo e vendas do dia',
+            releasedAt: Date.now() - 60000,
+          });
+          qaChanged = true;
+        }
+
+        if (!nextReleases.some((r) => r.version === '5.0')) {
+          nextReleases.push({
+            version: '5.0',
+            releaseType: 'major',
+            summary:
+              'v5.0 (Major): Início da fase de Conectividade — Pipeline CI/CD via GitHub Actions com deploy FTP automatizado, build estático Vite otimizado e correção de segurança no botão de cadeado (modal de confirmação + redirecionamento externo para Google).',
             releasedAt: Date.now(),
           });
           qaChanged = true;
@@ -2051,8 +2096,8 @@ class MultiOrgDataService {
   }
 
   /**
-   * v4.2-UI: Botão de saída rápida ("Pânico / Destruir Sessão").
-   * Limpa sessão em memória, sessionStorage e cookies locais do domínio, preservando localStorage.
+   * v5.0: Saída segura com limpeza de sessão em memória, chaves de sessão no localStorage,
+   * sessionStorage e cookies locais do domínio, preservando dados locais de lojas, veículos e configurações.
    */
   destroySessionQuickExit(): void {
     if (this.currentSessionUserId) {
@@ -2063,6 +2108,26 @@ class MultiOrgDataService {
     this.isHighMgmtOnlineVisible = false;
     this.secretChatRooms.clear();
     this.secretChatMessages.clear();
+
+    try {
+      localStorage.removeItem(STORAGE_KEYS.LEGACY_SESSION_KEY);
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        const lower = key.toLowerCase();
+        if (
+          lower.includes('session') ||
+          lower.includes('auth_token') ||
+          lower.includes('active_user')
+        ) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((key) => localStorage.removeItem(key));
+    } catch {
+      // Ignora caso bloqueado
+    }
 
     try {
       sessionStorage.clear();
