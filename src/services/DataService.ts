@@ -60,6 +60,7 @@ import {
   ROLE_LEVEL,
 } from '../utils/rbac';
 import { ChatAuditService } from './ChatAuditService';
+import { limparSessaoECacheNavegador } from '../utils/sessionCleanup';
 
 const STORAGE_KEYS = {
   USERS: 'radar_v2_users',
@@ -909,22 +910,72 @@ function getV60QaItems(): QaChecklistItem[] {
   }));
 }
 
-function getRequiredRoadmapItems(): QaChecklistItem[] {
+function getV610QaItems(): QaChecklistItem[] {
   const now = Date.now();
   const titles = [
-    'Revisar/reforçar bloqueio total de salvamento de senha e autocomplete no navegador',
-    'Conectar com a API do Telegram (alertas gratuitos para grupo/equipe da loja)',
-    'Conectar com a API do WhatsApp (notificações via API oficial/integrada)',
-    'Conectar banco de dados em tempo real com Firebase Firestore (onSnapshot)',
-    'Configurar repositório no GitHub para versionamento contínuo',
-    'Configurar GitHub Secrets e Action de deploy automático via FTP para a hospedagem (ValueHost)',
+    '[v6.1.0] Mapa 100% estático ao adicionar veículos ou usar "Onde eu estou" (sem recarregar TileLayer ou deixar tela branca)',
+    '[v6.1.0] Seletor flutuante de estilo (Padrão OSM vs. Escuro Limpo CARTO Basemaps sem API Key e com filtro azul-marinho)',
+    '[v6.1.0] Separação definitiva: "Sair" no menu limpa sessão/cache e volta ao Login; botão de cadeado (Pânico) sai em 1 toque para google.com',
+    '[v6.1.0] Painel interativo de Checklist de Versões e QA acessível no badge de versão (Login e Menu) com persistência automática',
+    '[v6.1.0] Atualização do indicador de versão para 6.1.0 em todo o sistema',
   ];
   return titles.map((title, i) => ({
-    id: `qa-road-v3-${i + 1}`,
-    section: 'roadmap' as const,
+    id: `qa-v610-${i + 1}`,
+    section: 'features' as const,
     title,
+    done: true,
+    qaStatus: 'pending' as const,
+    versionTag: '6.1.0',
+    createdAt: now + 610 + i,
+  }));
+}
+
+function getRequiredRoadmapItems(): QaChecklistItem[] {
+  const now = Date.now();
+  const items: { id: string; title: string; versionTag?: string }[] = [
+    {
+      id: 'qa-road-v3-1',
+      title:
+        'Revisar/reforçar bloqueio total de salvamento de senha e autocomplete no navegador',
+      versionTag: '7.0',
+    },
+    {
+      id: 'qa-road-v3-2',
+      title:
+        'Conectar com a API do Telegram (alertas gratuitos para grupo/equipe da loja)',
+      versionTag: '7.0',
+    },
+    {
+      id: 'qa-road-v3-3',
+      title:
+        'Conectar com a API do WhatsApp (notificações via API oficial/integrada)',
+      versionTag: '7.0',
+    },
+    {
+      id: 'qa-road-v3-4',
+      title:
+        'v7.0 - Integração Firebase Firestore em tempo real (onSnapshot) e sincronização em nuvem',
+      versionTag: '7.0',
+    },
+    {
+      id: 'qa-road-v3-5',
+      title: 'Configurar repositório no GitHub para versionamento contínuo',
+      versionTag: '6.1.0',
+    },
+    {
+      id: 'qa-road-v3-6',
+      title:
+        'Configurar GitHub Secrets e Action de deploy automático via FTP para a hospedagem (ValueHost)',
+      versionTag: '6.1.0',
+    },
+  ];
+  return items.map((entry, i) => ({
+    id: entry.id,
+    section: 'roadmap' as const,
+    title: entry.title,
     done: false,
     qaStatus: 'pending' as const,
+    versionTag: entry.versionTag,
     createdAt: now + 500 + i,
   }));
 }
@@ -953,7 +1004,7 @@ function createSeedQaChangelog(): QaChangelogState {
   }));
 
   return {
-    version: '6.0',
+    version: '6.1.0',
     items: [
       ...v1Features,
       ...getV2QaItems(),
@@ -966,6 +1017,7 @@ function createSeedQaChangelog(): QaChangelogState {
       ...getV45QaItems(),
       ...getV50QaItems(),
       ...getV60QaItems(),
+      ...getV610QaItems(),
       ...getRequiredRoadmapItems(),
     ],
     releases: [
@@ -1043,6 +1095,13 @@ function createSeedQaChangelog(): QaChangelogState {
         releaseType: 'major',
         summary:
           'v6.0 (Correções de Estabilidade do Mapa, Fluxo Rápido de Marcação e Botão de Emergência): Correção do mapa branco com invalidateSize/ResizeObserver, modo Mapa Limpo Azul Noturno, atalho de mapa no cabeçalho, barra rápida com 3 tipos configuráveis no Super Admin + marcação direta sem modal intermediário e correção do botão de cadeado em produção.',
+        releasedAt: now - 30000,
+      },
+      {
+        version: '6.1.0',
+        releaseType: 'minor',
+        summary:
+          'v6.1.0 (Correção definitiva do mapa, estilo Escuro Limpo CARTO, separação Sair vs. Pânico e Checklist QA): TileLayer preservado sem recarregamento ao marcar veículos, seletor flutuante Padrão vs. Escuro Limpo sem API key, limpeza de sessão/cache unificada (Sair volta ao login; Cadeado sai direto para Google) e checklist interativo restaurado no badge de versão.',
         releasedAt: now,
       },
     ],
@@ -1633,6 +1692,13 @@ class MultiOrgDataService {
           }
         });
 
+        getV610QaItems().forEach((v610Item) => {
+          if (!nextItems.some((item) => item.id === v610Item.id)) {
+            nextItems.push(v610Item);
+            qaChanged = true;
+          }
+        });
+
         getRequiredRoadmapItems().forEach((roadItem) => {
           const normalizedTitle = roadItem.title.toLowerCase();
           const alreadyExists = nextItems.some(
@@ -1670,9 +1736,10 @@ class MultiOrgDataService {
           nextVersion === '4.3-UI' ||
           nextVersion === '4.4-Final' ||
           nextVersion === '4.5-RC' ||
-          nextVersion === '5.0'
+          nextVersion === '5.0' ||
+          nextVersion === '6.0'
         ) {
-          nextVersion = '6.0';
+          nextVersion = '6.1.0';
           qaChanged = true;
         }
 
@@ -1793,6 +1860,17 @@ class MultiOrgDataService {
             releaseType: 'major',
             summary:
               'v6.0 (Correções de Estabilidade do Mapa, Fluxo Rápido de Marcação e Botão de Emergência): Correção do mapa branco com invalidateSize/ResizeObserver, modo Mapa Limpo Azul Noturno, atalho de mapa no cabeçalho, barra rápida com 3 tipos configuráveis no Super Admin + marcação direta sem modal intermediário e correção do botão de cadeado em produção.',
+            releasedAt: Date.now() - 30000,
+          });
+          qaChanged = true;
+        }
+
+        if (!nextReleases.some((r) => r.version === '6.1.0')) {
+          nextReleases.push({
+            version: '6.1.0',
+            releaseType: 'minor',
+            summary:
+              'v6.1.0 (Correção definitiva do mapa, estilo Escuro Limpo CARTO, separação Sair vs. Pânico e Checklist QA): TileLayer preservado sem recarregamento ao marcar veículos, seletor flutuante Padrão vs. Escuro Limpo sem API key, limpeza de sessão/cache unificada (Sair volta ao login; Cadeado sai direto para Google) e checklist interativo restaurado no badge de versão.',
             releasedAt: Date.now(),
           });
           qaChanged = true;
@@ -2182,8 +2260,8 @@ class MultiOrgDataService {
   }
 
   /**
-   * v5.0: Saída segura com limpeza de sessão em memória, chaves de sessão no localStorage,
-   * sessionStorage e cookies locais do domínio, preservando dados locais de lojas, veículos e configurações.
+   * v6.1.0: Saída segura com limpeza de sessão em memória e limpeza profunda
+   * de storage/cookies/caches via limparSessaoECacheNavegador().
    */
   destroySessionQuickExit(): void {
     if (this.currentSessionUserId) {
@@ -2195,49 +2273,7 @@ class MultiOrgDataService {
     this.secretChatRooms.clear();
     this.secretChatMessages.clear();
 
-    try {
-      localStorage.removeItem(STORAGE_KEYS.LEGACY_SESSION_KEY);
-      const keysToRemove: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (!key) continue;
-        const lower = key.toLowerCase();
-        if (
-          lower.includes('session') ||
-          lower.includes('token') ||
-          lower.includes('auth') ||
-          lower.includes('active_user')
-        ) {
-          keysToRemove.push(key);
-        }
-      }
-      keysToRemove.forEach((key) => localStorage.removeItem(key));
-    } catch {
-      // Ignora caso bloqueado
-    }
-
-    try {
-      sessionStorage.clear();
-    } catch {
-      // Ignora caso bloqueado
-    }
-
-    try {
-      if (typeof document !== 'undefined' && document.cookie) {
-        const cookies = document.cookie.split(';');
-        for (const rawCookie of cookies) {
-          const eqPos = rawCookie.indexOf('=');
-          const name = (
-            eqPos > -1 ? rawCookie.slice(0, eqPos) : rawCookie
-          ).trim();
-          if (name) {
-            document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
-          }
-        }
-      }
-    } catch {
-      // Ignora caso bloqueado
-    }
+    void limparSessaoECacheNavegador();
 
     this.emitChatRooms();
     this.emitChatMessages();

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Lock } from 'lucide-react';
 
 interface PanicFloatingButtonProps {
-  onRequestExit: () => void;
+  onPanicExit: () => void;
 }
 
 const BUTTON_SIZE = 48;
@@ -10,7 +10,7 @@ const MARGIN = 12;
 const DRAG_THRESHOLD_PX = 12;
 
 export const PanicFloatingButton: React.FC<PanicFloatingButtonProps> = ({
-  onRequestExit,
+  onPanicExit,
 }) => {
   const [pos, setPos] = useState<{ x: number; y: number }>(() => {
     if (typeof window === 'undefined') return { x: 24, y: 120 };
@@ -20,8 +20,8 @@ export const PanicFloatingButton: React.FC<PanicFloatingButtonProps> = ({
     };
   });
 
-  const onRequestExitRef = useRef(onRequestExit);
-  onRequestExitRef.current = onRequestExit;
+  const onPanicExitRef = useRef(onPanicExit);
+  onPanicExitRef.current = onPanicExit;
 
   const suppressNextClickRef = useRef(false);
   const draggingRef = useRef<{
@@ -123,7 +123,7 @@ export const PanicFloatingButton: React.FC<PanicFloatingButtonProps> = ({
       suppressNextClickRef.current = false;
       return;
     }
-    onRequestExitRef.current();
+    onPanicExitRef.current();
   };
 
   return (
@@ -141,8 +141,8 @@ export const PanicFloatingButton: React.FC<PanicFloatingButtonProps> = ({
         onPointerUp={finishPointerDrag}
         onPointerCancel={finishPointerDrag}
         onClick={handleClick}
-        aria-label="Sair do sistema com confirmação (arraste para mover)"
-        title="Arraste para mover · Toque para encerrar sessão (com confirmação)"
+        aria-label="Botão de Pânico: encerrar sessão imediatamente e sair para o Google"
+        title="Botão de Pânico (1 toque): sai imediatamente para o Google · Arraste para mover"
         className="w-12 h-12 rounded-full bg-slate-900 hover:bg-red-700 active:scale-95 text-white border-2 border-slate-700 shadow-xl flex items-center justify-center touch-none cursor-grab active:cursor-grabbing select-none transition-all"
       >
         <Lock className="w-5 h-5 text-amber-300 pointer-events-none" />

@@ -30,7 +30,6 @@ import {
   canAccessClosingReview,
   canAccessFinanceSales,
   canManageCentralStock,
-  canManageQaVersion,
   hasPermission,
   isHighManagementInvisibleByDefault,
 } from '../../utils/rbac';
@@ -95,7 +94,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   const showAudit = hasPermission(currentUser, 'canViewDashboardAudit');
   const showClosings = canAccessClosingReview(currentUser.role);
   const isSuperAdmin = currentUser.role === 'SUPER_ADMIN';
-  const showQa = canManageQaVersion(currentUser.role);
+  const showQa = true;
   const showOnlineSwitch = isHighManagementInvisibleByDefault(currentUser.role);
 
   const pendingAdminStock = counts.adminFinancePending || 0;
@@ -196,9 +195,18 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                 <div className="font-display font-extrabold text-base leading-tight tracking-tight truncate">
                   Radar da Caça
                 </div>
-                <div className="text-[11px] text-slate-400 font-mono-tabular">
-                  v{qaChangelog.version}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenVersionQa();
+                  }}
+                  title="Abrir Painel de Controle de Versões e Checklist QA"
+                  className="mt-0.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-800 hover:bg-blue-700 border border-slate-700 text-[11px] text-blue-200 hover:text-white font-mono-tabular font-bold transition-colors"
+                >
+                  <History className="w-3 h-3 shrink-0" />
+                  <span>v{qaChangelog.version} · Checklist QA</span>
+                </button>
               </div>
             </div>
 
@@ -360,13 +368,13 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
             </div>
           )}
 
-          {/* Sistema (Super Admin) */}
-          {isSuperAdmin && (
-            <div className="space-y-1">
-              <div className="px-3 text-[11px] font-extrabold uppercase tracking-wider text-slate-400 mb-1.5">
-                Sistema
-              </div>
-              {renderNavItem(
+          {/* Sistema & Versão QA */}
+          <div className="space-y-1">
+            <div className="px-3 text-[11px] font-extrabold uppercase tracking-wider text-slate-400 mb-1.5">
+              Sistema
+            </div>
+            {isSuperAdmin &&
+              renderNavItem(
                 'health',
                 'Saúde & Auditoria de Logs',
                 <Activity className="w-4 h-4" />,
@@ -374,28 +382,27 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                   ? `${counts.chatAuditLogs} .txt`
                   : undefined
               )}
-              {showQa && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    onOpenVersionQa();
-                  }}
-                  className="w-full min-h-[46px] px-3.5 rounded-xl flex items-center justify-between gap-3 text-sm font-bold text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors"
-                >
-                  <span className="flex items-center gap-3 min-w-0">
-                    <History className="w-4 h-4 text-slate-500" />
-                    <span className="truncate">
-                      Versão {qaChangelog.version}
-                    </span>
+            {showQa && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenVersionQa();
+                }}
+                className="w-full min-h-[46px] px-3.5 rounded-xl flex items-center justify-between gap-3 text-sm font-bold text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+              >
+                <span className="flex items-center gap-3 min-w-0">
+                  <History className="w-4 h-4 text-blue-600" />
+                  <span className="truncate">
+                    Versão {qaChangelog.version}
                   </span>
-                  <span className="text-[11px] font-mono-tabular px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">
-                    QA
-                  </span>
-                </button>
-              )}
-            </div>
-          )}
+                </span>
+                <span className="text-[11px] font-mono-tabular px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 font-bold">
+                  Checklist QA
+                </span>
+              </button>
+            )}
+          </div>
         </nav>
 
         {/* Rodapé do Menu Lateral: Presença Online, Perfil Público & Sair */}
@@ -456,7 +463,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
             className="w-full min-h-[46px] px-4 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 text-sm font-bold flex items-center justify-center gap-2 transition-colors"
           >
             <LogOut className="w-4 h-4" />
-            <span>Sair</span>
+            <span>Sair do Sistema (Trocar Usuário)</span>
           </button>
         </div>
       </aside>

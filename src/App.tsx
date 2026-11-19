@@ -6,7 +6,6 @@ import {
   canAccessClosingReview,
   canAccessFinanceSales,
   canManageCentralStock,
-  canManageQaVersion,
   canManageStore,
   canManageStoreOptions,
   canPromptOpenStoreOnLogin,
@@ -15,13 +14,13 @@ import {
   isUserLinkedToStore,
   ROLE_LEVEL,
 } from './utils/rbac';
+import { limparSessaoECacheNavegador } from './utils/sessionCleanup';
 import { LoginView } from './components/auth/LoginView';
 import { FocusLockScreenModal } from './components/auth/FocusLockScreenModal';
 import { StoreOpenPromptModal } from './components/auth/StoreOpenPromptModal';
 import { StoreOpeningWithdrawalModal } from './components/auth/StoreOpeningWithdrawalModal';
 import { NavigationDrawer } from './components/layout/NavigationDrawer';
 import { PanicFloatingButton } from './components/layout/PanicFloatingButton';
-import { ExitConfirmModal } from './components/layout/ExitConfirmModal';
 import { SharedRadarMapView } from './components/map/SharedRadarMapView';
 import { MessagesModal } from './components/map/MessagesModal';
 import { CloseStoreSalesModal } from './components/map/CloseStoreSalesModal';
@@ -183,7 +182,6 @@ export default function App() {
   const [chatModalOpen, setChatModalOpen] = useState(false);
   const [qaModalOpen, setQaModalOpen] = useState(false);
   const [isFocusLocked, setIsFocusLocked] = useState(false);
-  const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
   const [isRedirectingOut, setIsRedirectingOut] = useState(false);
   const [closingModalStore, setClosingModalStore] =
     useState<StoreUnit | null>(null);
@@ -238,8 +236,6 @@ export default function App() {
     if (!currentUser) {
       setDrawerOpen(false);
       setChatModalOpen(false);
-      setQaModalOpen(false);
-      setExitConfirmOpen(false);
       setClosingModalStore(null);
       setOpeningWithdrawalStore(null);
       setQueuedOpenStoreIds([]);
@@ -254,7 +250,6 @@ export default function App() {
     setDrawerOpen(false);
     setChatModalOpen(false);
     setQaModalOpen(false);
-    setExitConfirmOpen(false);
     setClosingModalStore(null);
     setOpeningWithdrawalStore(null);
     setQueuedOpenStoreIds([]);
@@ -425,19 +420,44 @@ export default function App() {
 
   if (!currentUser) {
     return (
-      <LoginView
-        version={qaChangelog.version}
-        onLogin={login}
-        onQuickTestLogin={loginAsTestSuperAdmin}
-      />
+      <>
+        <LoginView
+          version={qaChangelog.version}
+          onLogin={login}
+          onQuickTestLogin={loginAsTestSuperAdmin}
+          onOpenVersionQa={() => setQaModalOpen(true)}
+        />
+        <VersionQaModal
+          isOpen={qaModalOpen}
+          changelog={qaChangelog}
+          onSave={saveQaChangelog}
+          onClose={() => setQaModalOpen(false)}
+        />
+      </>
     );
   }
 
-  const handleConfirmExternalExit = () => {
-    setExitConfirmOpen(false);
+  // Comportamento A — "Sair do Sistema" (Menu Lateral / Bloqueio): limpa sessão/cache e recarrega para tela de Login
+  const handleSidebarLogoutToLogin = async () => {
+    setDrawerOpen(false);
+    setIsFocusLocked(false);
+    destroySessionQuickExit();
+    await limparSessaoECacheNavegador();
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('_clean', String(Date.now()));
+      window.location.replace(url.toString());
+    } catch {
+      window.location.reload();
+    }
+  };
+
+  // Comportamento B — "Botão de Pânico (Cadeado)": saída instantânea em 1 toque para o Google sem modal
+  const handleInstantPanicExit = () => {
     setIsFocusLocked(false);
     setIsRedirectingOut(true);
     destroySessionQuickExit();
+    void limparSessaoECacheNavegador();
     try {
       window.location.replace('https://www.google.com');
     } catch {
@@ -890,7 +910,7 @@ export default function App() {
         onToggleOnlineVisibility={setHighManagementOnlineVisibility}
         onTogglePublicProfile={setUserPublicProfile}
         onOpenVersionQa={() => setQaModalOpen(true)}
-        onRequestExit={() => setExitConfirmOpen(true)}
+        onRequestExit={() => void handleSidebarLogoutToLogin()}
         onClose={() => setDrawerOpen(false)}
       />
 
@@ -960,18 +980,16 @@ export default function App() {
         />
       )}
 
-      {/* Modal de Controle de Versão & QA exclusivo do Super Admin */}
-      {canManageQaVersion(currentUser.role) && (
-        <VersionQaModal
-          isOpen={qaModalOpen}
-          changelog={qaChangelog}
-          onSave={saveQaChangelog}
-          onClose={() => setQaModalOpen(false)}
-        />
-      )}
+      {/* Modal Interativo de Controle de Versões & Checklist QA */}
+      <VersionQaModal
+        isOpen={qaModalOpen}
+        changelog={qaChangelog}
+        onSave={saveQaChangelog}
+        onClose={() => setQaModalOpen(false)}
+      />
 
-      {/* Botão Flutuante Arrastável do Cadeado (abre confirmação antes de sair) */}
-      <PanicFloatingButton onRequestExit={() => setExitConfirmOpen(true)} />
+      {/* Botão Flutuante de Pânico (1 toque imediato para Google, zero modal) */}
+      <PanicFloatingButton onPanicExit={handleInstantPanicExit} />
 
       {/* Tela de Bloqueio Automático Anti-Espião (Perda de Foco / Minimização / Troca de Guia) */}
       <FocusLockScreenModal
@@ -981,14 +999,7 @@ export default function App() {
         isQuickTestSession={isQuickTestSession}
         onVerifyPassword={verifySessionPassword}
         onUnlock={() => setIsFocusLocked(false)}
-        onRequestExit={() => setExitConfirmOpen(true)}
-      />
-
-      {/* Modal de Confirmação Obrigatória de Saída e Redirecionamento Externo */}
-      <ExitConfirmModal
-        isOpen={exitConfirmOpen}
-        onCancel={() => setExitConfirmOpen(false)}
-        onConfirmExit={handleConfirmExternalExit}
+        onRequestExit={() => void handleSidebarLogoutToLogin()}
       />
     </div>
   );

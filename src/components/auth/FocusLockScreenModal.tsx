@@ -27,7 +27,7 @@ function getInitials(name: string): string {
 
 export const FocusLockScreenModal: React.FC<FocusLockScreenModalProps> = ({
   isOpen,
-  version = '6.0',
+  version = '6.1.0',
   currentUser,
   isQuickTestSession,
   onVerifyPassword,
@@ -221,7 +221,7 @@ export const FocusLockScreenModal: React.FC<FocusLockScreenModalProps> = ({
             className="w-full min-h-[44px] px-4 rounded-xl bg-slate-800 hover:bg-red-700 text-slate-200 hover:text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors"
           >
             <LogOut className="w-4 h-4" />
-            <span>Encerrar Sessão / Sair do Sistema</span>
+            <span>Encerrar Sessão (Ir para Login)</span>
           </button>
         </div>
       </div>

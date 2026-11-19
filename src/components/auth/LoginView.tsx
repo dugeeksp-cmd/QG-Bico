@@ -1,16 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Lock, ShieldAlert, User as UserIcon } from 'lucide-react';
+import { History, Lock, ShieldAlert, User as UserIcon } from 'lucide-react';
 
 interface LoginViewProps {
   version?: string;
   onLogin: (username: string, password: string) => Promise<unknown>;
   onQuickTestLogin: () => Promise<unknown>;
+  onOpenVersionQa?: () => void;
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({
-  version = '6.0',
+  version = '6.1.0',
   onLogin,
   onQuickTestLogin,
+  onOpenVersionQa,
 }) => {
   const randomId = useMemo(
     () => Math.random().toString(36).slice(2, 10),
@@ -109,9 +111,15 @@ export const LoginView: React.FC<LoginViewProps> = ({
           <p className="text-sm text-slate-600 mt-1">
             Frota Urbana &amp; Unidades Compartilhadas
           </p>
-          <span className="mt-1.5 text-[11px] font-mono-tabular font-bold text-slate-500">
-            Versão {version}
-          </span>
+          <button
+            type="button"
+            onClick={() => onOpenVersionQa?.()}
+            title="Abrir Painel de Controle de Versões e Checklist QA"
+            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 text-[11px] font-mono-tabular font-bold text-slate-700 hover:text-blue-800 transition-colors cursor-pointer"
+          >
+            <History className="w-3.5 h-3.5 shrink-0" />
+            <span>Versão {version} · Checklist QA</span>
+          </button>
         </div>
 
         <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4">

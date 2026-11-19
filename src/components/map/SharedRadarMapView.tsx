@@ -234,8 +234,13 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const defaultTileLayerRef = useRef<L.TileLayer | null>(null);
+  const cleanBlueTileLayerRef = useRef<L.TileLayer | null>(null);
+  const activeStyleRef = useRef<'default' | 'clean_blue'>('default');
+  const lastContainerSizeRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
+  const wasMapVisibleRef = useRef<boolean>(isMapVisible);
   const styleBtnRef = useRef<HTMLButtonElement | null>(null);
+  const stylePopoverRef = useRef<HTMLDivElement | null>(null);
   const storesLayerRef = useRef<L.LayerGroup | null>(null);
   const occurrencesLayerRef = useRef<L.LayerGroup | null>(null);
   const occurrenceRefsById = useRef<Map<string, L.Marker>>(new Map());
@@ -248,6 +253,7 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
 
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [mapStyle, setMapStyle] = useState<'default' | 'clean_blue'>('default');
+  const [styleMenuOpen, setStyleMenuOpen] = useState(false);
   const [quickBarOpen, setQuickBarOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [bellOpen, setBellOpen] = useState(false);
@@ -294,6 +300,19 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
     const interval = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(interval);
   }, []);
+
+  // Fecha o popover de seleção de estilo do mapa ao clicar fora
+  useEffect(() => {
+    if (!styleMenuOpen) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (stylePopoverRef.current?.contains(target)) return;
+      if (styleBtnRef.current?.contains(target)) return;
+      setStyleMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [styleMenuOpen]);
 
   // Categoria Principal definida por Super Admin / Presidente
   const primaryCategory = useMemo(
@@ -590,9 +609,6 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
         draft.tag
       );
       notifyAfterCreate(created, draft.subcategory, lat, lng);
-      window.requestAnimationFrame(() => {
-        mapInstanceRef.current?.invalidateSize({ pan: false, animate: false });
-      });
     };
 
     if (!navigator.geolocation) {
@@ -755,14 +771,15 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
           container
         ) as HTMLButtonElement;
         btn.type = 'button';
-        btn.title = 'Alternar para Mapa Limpo / Noturno Azul';
-        btn.setAttribute('aria-label', 'Alternar estilo do mapa');
+        btn.title = 'Escolher estilo do mapa (Padrão / Escuro Limpo)';
+        btn.setAttribute('aria-label', 'Escolher estilo do mapa');
         btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`;
         L.DomEvent.disableClickPropagation(container);
         L.DomEvent.disableScrollPropagation(container);
         btn.onclick = (ev) => {
           ev.preventDefault();
-          setMapStyle((prev) => (prev === 'default' ? 'clean_blue' : 'default'));
+          ev.stopPropagation();
+          setStyleMenuOpen((prev) => !prev);
         };
         styleBtnRef.current = btn;
         return container;
@@ -770,14 +787,15 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
     });
     new StyleToggleControl().addTo(map);
 
-    const initialTiles = L.tileLayer(
+    const defaultTiles = L.tileLayer(
       'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
       {
         attribution: '&copy; OpenStreetMap contributors',
         maxZoom: 19,
       }
     ).addTo(map);
-    tileLayerRef.current = initialTiles;
+    defaultTileLayerRef.current = defaultTiles;
+    activeStyleRef.current = 'default';
 
     const storesLayer = L.layerGroup().addTo(map);
     const occurrencesLayer = L.layerGroup().addTo(map);
@@ -812,12 +830,6 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
               text: `${updated.subcategoryName} atualizado na rua! Rastro traçado e cronômetro reiniciado (20 min).`,
               tone: 'info',
             });
-            window.requestAnimationFrame(() => {
-              mapInstanceRef.current?.invalidateSize({
-                pan: false,
-                animate: false,
-              });
-            });
           });
         return;
       }
@@ -844,12 +856,6 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
               e.latlng.lat,
               e.latlng.lng
             );
-            window.requestAnimationFrame(() => {
-              mapInstanceRef.current?.invalidateSize({
-                pan: false,
-                animate: false,
-              });
-            });
           });
         return;
       }
@@ -888,19 +894,31 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
     occurrencesLayerRef.current = occurrencesLayer;
     userGpsLayerRef.current = gpsLayer;
 
-    // Garante recálculo imediato caso container ou janela mudem de tamanho (evita mapa branco)
-    const handleViewportResize = () => {
-      map.invalidateSize({ pan: false, animate: false });
+    // Garante recálculo apenas quando a dimensão real do container mudar (nunca ao marcar pinos)
+    const invalidateIfSizeChanged = () => {
+      const el = mapContainerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const w = Math.round(rect.width);
+      const h = Math.round(rect.height);
+      if (w <= 0 || h <= 0) return;
+      if (
+        Math.abs(w - lastContainerSizeRef.current.w) > 1 ||
+        Math.abs(h - lastContainerSizeRef.current.h) > 1
+      ) {
+        lastContainerSizeRef.current = { w, h };
+        map.invalidateSize({ pan: false, animate: false });
+      }
     };
-    window.addEventListener('resize', handleViewportResize);
-    window.visualViewport?.addEventListener('resize', handleViewportResize);
+
+    invalidateIfSizeChanged();
+    window.addEventListener('resize', invalidateIfSizeChanged);
+    window.visualViewport?.addEventListener('resize', invalidateIfSizeChanged);
 
     let resizeObserver: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined' && mapContainerRef.current) {
       resizeObserver = new ResizeObserver(() => {
-        window.requestAnimationFrame(() => {
-          map.invalidateSize({ pan: false, animate: false });
-        });
+        window.requestAnimationFrame(invalidateIfSizeChanged);
       });
       resizeObserver.observe(mapContainerRef.current);
     }
@@ -925,8 +943,11 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
     }
 
     return () => {
-      window.removeEventListener('resize', handleViewportResize);
-      window.visualViewport?.removeEventListener('resize', handleViewportResize);
+      window.removeEventListener('resize', invalidateIfSizeChanged);
+      window.visualViewport?.removeEventListener(
+        'resize',
+        invalidateIfSizeChanged
+      );
       resizeObserver?.disconnect();
       if (tapTimerRef.current) {
         window.clearTimeout(tapTimerRef.current);
@@ -934,7 +955,10 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
       }
       map.remove();
       mapInstanceRef.current = null;
-      tileLayerRef.current = null;
+      defaultTileLayerRef.current = null;
+      cleanBlueTileLayerRef.current = null;
+      activeStyleRef.current = 'default';
+      lastContainerSizeRef.current = { w: 0, h: 0 };
       styleBtnRef.current = null;
       storesLayerRef.current = null;
       occurrencesLayerRef.current = null;
@@ -942,81 +966,78 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
     };
   }, [canViewMap]);
 
-  // Alterna camada de tiles e tema visual (Mapa Padrão <-> Mapa Limpo Noturno Azul) sem desmontar o mapa
+  // Alterna camada de tiles entre Padrão (OSM) e Escuro Limpo (CARTO Basemaps sem API Key) somente quando o usuário muda o estilo
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map) return;
-
-    if (tileLayerRef.current) {
-      map.removeLayer(tileLayerRef.current);
-      tileLayerRef.current = null;
-    }
+    if (!map || mapStyle === activeStyleRef.current) return;
 
     const container = map.getContainer();
     if (mapStyle === 'clean_blue') {
+      if (defaultTileLayerRef.current && map.hasLayer(defaultTileLayerRef.current)) {
+        map.removeLayer(defaultTileLayerRef.current);
+      }
+      if (!cleanBlueTileLayerRef.current) {
+        cleanBlueTileLayerRef.current = L.tileLayer(
+          'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+          {
+            attribution: '&copy; OpenStreetMap &copy; CARTO',
+            subdomains: 'abcd',
+            maxZoom: 19,
+          }
+        );
+      }
+      cleanBlueTileLayerRef.current.addTo(map);
       container.classList.add('radar-map-clean-blue');
-      tileLayerRef.current = L.tileLayer(
-        'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
-        {
-          attribution: '&copy; OpenStreetMap &copy; CARTO',
-          subdomains: 'abcd',
-          maxZoom: 19,
-        }
-      ).addTo(map);
     } else {
+      if (cleanBlueTileLayerRef.current && map.hasLayer(cleanBlueTileLayerRef.current)) {
+        map.removeLayer(cleanBlueTileLayerRef.current);
+      }
+      if (!defaultTileLayerRef.current) {
+        defaultTileLayerRef.current = L.tileLayer(
+          'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          {
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 19,
+          }
+        );
+      }
+      defaultTileLayerRef.current.addTo(map);
       container.classList.remove('radar-map-clean-blue');
-      tileLayerRef.current = L.tileLayer(
-        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        {
-          attribution: '&copy; OpenStreetMap contributors',
-          maxZoom: 19,
-        }
-      ).addTo(map);
     }
 
-    if (styleBtnRef.current) {
-      styleBtnRef.current.classList.toggle('is-active', mapStyle === 'clean_blue');
-      styleBtnRef.current.setAttribute(
-        'aria-pressed',
-        String(mapStyle === 'clean_blue')
-      );
-      styleBtnRef.current.title =
-        mapStyle === 'clean_blue'
-          ? 'Voltar ao Mapa Padrão'
-          : 'Ativar Mapa Limpo / Noturno Azul';
-    }
-
-    window.requestAnimationFrame(() => {
-      map.invalidateSize({ pan: false, animate: false });
-    });
+    activeStyleRef.current = mapStyle;
   }, [mapStyle, canViewMap]);
 
-  // Recalcula dimensões do mapa ao alternar visibilidade, barra rápida ou estados de marcação
+  // Atualiza estado visual do botão de camadas
   useEffect(() => {
+    if (!styleBtnRef.current) return;
+    styleBtnRef.current.classList.toggle(
+      'is-active',
+      mapStyle === 'clean_blue' || styleMenuOpen
+    );
+    styleBtnRef.current.setAttribute('aria-expanded', String(styleMenuOpen));
+  }, [mapStyle, styleMenuOpen]);
+
+  // Recalcula dimensões SOMENTE quando a aba do mapa volta a ficar visível após ter estado oculta
+  useEffect(() => {
+    const prevVisible = wasMapVisibleRef.current;
+    wasMapVisibleRef.current = isMapVisible;
     const map = mapInstanceRef.current;
-    if (!map || !isMapVisible) return;
+    if (!map || !isMapVisible || prevVisible) return;
     const raf = window.requestAnimationFrame(() => {
-      map.invalidateSize({ pan: false, animate: false });
+      const el = mapContainerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        lastContainerSizeRef.current = {
+          w: Math.round(rect.width),
+          h: Math.round(rect.height),
+        };
+        map.invalidateSize({ pan: false, animate: false });
+      }
     });
-    const timer = window.setTimeout(() => {
-      map.invalidateSize({ pan: false, animate: false });
-    }, 120);
-    return () => {
-      window.cancelAnimationFrame(raf);
-      window.clearTimeout(timer);
-    };
-  }, [
-    isMapVisible,
-    quickBarOpen,
-    pendingMapPointDraft,
-    sightingTargetOcc,
-    pickerOpen,
-    bellOpen,
-    selectedStoreId,
-    toastMessage,
-    activeLinkedStore?.isOpen,
-    occurrences.length,
-  ]);
+    return () => window.cancelAnimationFrame(raf);
+  }, [isMapVisible]);
 
   // Responde ao botão de centralizar GPS da barra superior
   useEffect(() => {
@@ -1680,6 +1701,85 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
           aria-label="Mapa compartilhado de unidades e ocorrências"
         />
 
+        {/* Popover flutuante de seleção de estilo do mapa (Padrão vs. Escuro Limpo) */}
+        {styleMenuOpen && (
+          <div
+            ref={stylePopoverRef}
+            role="menu"
+            aria-label="Selecionar estilo do mapa"
+            className="absolute top-[122px] right-2.5 z-[920] w-52 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl p-1.5 space-y-1"
+          >
+            <div className="px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+              Estilo do Mapa
+            </div>
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={mapStyle === 'default'}
+              onClick={() => {
+                setMapStyle('default');
+                setStyleMenuOpen(false);
+              }}
+              className={`w-full min-h-[42px] px-2.5 py-1.5 rounded-xl flex items-center justify-between gap-2 text-left transition-colors ${
+                mapStyle === 'default'
+                  ? 'bg-blue-50 border border-blue-200 text-blue-900'
+                  : 'hover:bg-slate-100 text-slate-800 border border-transparent'
+              }`}
+            >
+              <span className="flex items-center gap-2.5 min-w-0">
+                <span className="w-5 h-5 rounded-md border border-slate-300 bg-slate-100 shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-xs font-extrabold leading-tight">
+                    Padrão
+                  </span>
+                  <span className="block text-[10px] text-slate-500 leading-tight">
+                    Ruas tradicionais
+                  </span>
+                </span>
+              </span>
+              {mapStyle === 'default' && (
+                <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={mapStyle === 'clean_blue'}
+              onClick={() => {
+                setMapStyle('clean_blue');
+                setStyleMenuOpen(false);
+              }}
+              className={`w-full min-h-[42px] px-2.5 py-1.5 rounded-xl flex items-center justify-between gap-2 text-left transition-colors ${
+                mapStyle === 'clean_blue'
+                  ? 'bg-slate-900 border border-blue-500 text-white'
+                  : 'hover:bg-slate-100 text-slate-800 border border-transparent'
+              }`}
+            >
+              <span className="flex items-center gap-2.5 min-w-0">
+                <span className="w-5 h-5 rounded-md border border-blue-800 bg-[#071329] shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-xs font-extrabold leading-tight">
+                    Escuro Limpo
+                  </span>
+                  <span
+                    className={`block text-[10px] leading-tight ${
+                      mapStyle === 'clean_blue'
+                        ? 'text-blue-200'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    Noturno azul sem POIs
+                  </span>
+                </span>
+              </span>
+              {mapStyle === 'clean_blue' && (
+                <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+              )}
+            </button>
+          </div>
+        )}
+
         {/* Banner superior de status + Abertura em 1 Toque + Botão Última 1h */}
         <div className="pointer-events-none absolute top-3 left-3 right-14 z-[800] flex flex-col items-start gap-2">
           {activeLinkedStore && !activeLinkedStore.isOpen && canOpenClose && (
@@ -1917,9 +2017,9 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
           </div>
         )}
 
-        {/* Barra de Ação Rápida ao clicar em "Marcar Carro": 3 tipos principais lado a lado + botão "Outros" */}
+        {/* Barra de Ação Rápida Flutuante sobre o Dock (não altera altura do mapa!) */}
         {quickBarOpen && (
-          <div className="shrink-0 w-full bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-8px_28px_rgba(15,23,42,0.14)] z-[910] px-2.5 pt-2.5 pb-2 space-y-2">
+          <div className="absolute bottom-[69px] left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-8px_28px_rgba(15,23,42,0.16)] z-[910] px-2.5 pt-2.5 pb-2.5 space-y-2">
             <div className="flex items-center justify-between px-1">
               <span className="text-[11px] font-extrabold uppercase tracking-wide text-slate-600">
                 Seleção rápida — Toque no veículo
