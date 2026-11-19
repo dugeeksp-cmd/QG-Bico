@@ -488,6 +488,8 @@ export interface CatalogSubcategory {
   customImageDataUrl?: string;
   colorHex: string;
   pulseEffect?: boolean;
+  isQuickPin?: boolean;
+  quickPinOrder?: number;
   createdAt: number;
   updatedAt: number;
 }

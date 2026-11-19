@@ -1,12 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
-  ArrowLeft,
   ChevronRight,
-  Crosshair,
   Layers,
-  MapPin,
-  Navigation,
   Search,
   Tag,
   X,
@@ -26,13 +22,7 @@ interface OccurrencePickerModalProps {
   subcategories: CatalogSubcategory[];
   activeOccurrences: MapOccurrence[];
   alertAudit: AlertAuditEntry[];
-  gpsLoading: boolean;
-  onConfirmHere: (
-    category: CatalogCategory,
-    subcategory: CatalogSubcategory,
-    tag?: string
-  ) => Promise<void>;
-  onChoosePointOnMap: (
+  onSelectSubcategory: (
     category: CatalogCategory,
     subcategory: CatalogSubcategory,
     tag?: string
@@ -47,15 +37,11 @@ export const OccurrencePickerModal: React.FC<OccurrencePickerModalProps> = ({
   subcategories,
   activeOccurrences,
   alertAudit,
-  gpsLoading,
-  onConfirmHere,
-  onChoosePointOnMap,
+  onSelectSubcategory,
   onClose,
 }) => {
   const [selectedCategory, setSelectedCategory] =
     useState<CatalogCategory | null>(null);
-  const [selectedSubcategory, setSelectedSubcategory] =
-    useState<CatalogSubcategory | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [shortTag, setShortTag] = useState('');
 
@@ -63,7 +49,6 @@ export const OccurrencePickerModal: React.FC<OccurrencePickerModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setSelectedCategory(primaryCategory || categories[0] || null);
-      setSelectedSubcategory(null);
       setSearchQuery('');
       setShortTag('');
     }
@@ -99,7 +84,6 @@ export const OccurrencePickerModal: React.FC<OccurrencePickerModalProps> = ({
 
   const handleClose = () => {
     setSelectedCategory(null);
-    setSelectedSubcategory(null);
     setSearchQuery('');
     setShortTag('');
     onClose();
@@ -126,18 +110,7 @@ export const OccurrencePickerModal: React.FC<OccurrencePickerModalProps> = ({
         {/* Cabeçalho com atalho discreto para Outras categorias */}
         <div className="px-5 pt-3 pb-3 border-b border-slate-200 flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            {selectedSubcategory ? (
-              <div className="flex items-center gap-2 mb-1.5">
-                <button
-                  type="button"
-                  onClick={() => setSelectedSubcategory(null)}
-                  className="min-h-[38px] px-3 -ml-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-900 text-xs font-extrabold flex items-center gap-1.5"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Trocar tipo</span>
-                </button>
-              </div>
-            ) : selectedCategory && categories.length > 1 ? (
+            {selectedCategory && categories.length > 1 ? (
               <div className="flex items-center gap-2 mb-1.5">
                 <button
                   type="button"
@@ -157,17 +130,13 @@ export const OccurrencePickerModal: React.FC<OccurrencePickerModalProps> = ({
               id="occurrence-picker-title"
               className="text-lg font-extrabold text-slate-900 leading-tight"
             >
-              {selectedSubcategory
-                ? `Onde você viu: ${selectedSubcategory.name}?`
-                : selectedCategory
-                ? `${selectedCategory.name} · Toque no item`
+              {selectedCategory
+                ? `${selectedCategory.name} · Outros tipos`
                 : 'Outras categorias'}
             </h2>
             <p className="mt-0.5 text-xs text-slate-500">
-              {selectedSubcategory
-                ? 'Escolha marcar no seu GPS atual ou apontar o ponto exato na rua.'
-                : selectedCategory
-                ? 'Selecione o veículo ou ocorrência para marcar no radar.'
+              {selectedCategory
+                ? 'Toque no veículo/item para marcar direto no mapa ou usar seu GPS.'
                 : 'Selecione outra categoria do catálogo.'}
             </p>
           </div>
@@ -183,106 +152,37 @@ export const OccurrencePickerModal: React.FC<OccurrencePickerModalProps> = ({
         </div>
 
         {/* Campo opcional de identificação curta (máx. 10 caracteres) */}
-        {!selectedSubcategory && (
-          <div className="px-5 py-3 border-b border-slate-200 bg-slate-50/90 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <label
-                htmlFor="occ-short-tag"
-                className="text-xs font-bold text-slate-700 flex items-center gap-1.5"
-              >
-                <Tag className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-                <span>Placa / Código curto (opcional)</span>
-              </label>
-              <span className="text-[11px] font-mono-tabular text-slate-500">
-                {shortTag.length}/10
-              </span>
-            </div>
-            <input
-              id="occ-short-tag"
-              type="text"
-              maxLength={10}
-              value={shortTag}
-              onChange={(e) => setShortTag(e.target.value.slice(0, 10))}
-              placeholder="Ex: ABC1234 ou VTR-04"
-              className="w-full min-h-[46px] px-3.5 bg-white border border-slate-300 rounded-xl text-sm font-mono-tabular font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
-            />
-            {hasMatchingTarget && (
-              <div className="px-3 py-2 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs font-bold flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
-                <span>Mesmo veículo/alvo identificado</span>
-              </div>
-            )}
+        <div className="px-5 py-3 border-b border-slate-200 bg-slate-50/90 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <label
+              htmlFor="occ-short-tag"
+              className="text-xs font-bold text-slate-700 flex items-center gap-1.5"
+            >
+              <Tag className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+              <span>Placa / Código curto (opcional)</span>
+            </label>
+            <span className="text-[11px] font-mono-tabular text-slate-500">
+              {shortTag.length}/10
+            </span>
           </div>
-        )}
-
-        {/* Etapa de Confirmação de Local (GPS atual vs Apontar no mapa) */}
-        {selectedSubcategory && selectedCategory ? (
-          <div className="p-5 space-y-4 overflow-y-auto">
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center gap-3.5">
-              <OccurrenceAvatar
-                spec={{
-                  visualType: selectedSubcategory.visualType,
-                  vehicleIconKey: selectedSubcategory.vehicleIconKey,
-                  symbolKey: selectedSubcategory.symbolKey,
-                  emoji: selectedSubcategory.emoji,
-                  customImageDataUrl: selectedSubcategory.customImageDataUrl,
-                  colorHex: selectedSubcategory.colorHex,
-                  pulseEffect: selectedSubcategory.pulseEffect,
-                }}
-                alt={selectedSubcategory.name}
-                className="w-14 h-14"
-              />
-              <div className="min-w-0 flex-1">
-                <div className="text-base font-extrabold text-slate-900 truncate">
-                  {selectedSubcategory.name}
-                </div>
-                <div className="text-xs text-slate-600 mt-0.5">
-                  {selectedCategory.name}
-                  {finalTag ? ` · Tag: ${finalTag}` : ''}
-                </div>
-              </div>
+          <input
+            id="occ-short-tag"
+            type="text"
+            maxLength={10}
+            value={shortTag}
+            onChange={(e) => setShortTag(e.target.value.slice(0, 10))}
+            placeholder="Ex: ABC1234 ou VTR-04"
+            className="w-full min-h-[46px] px-3.5 bg-white border border-slate-300 rounded-xl text-sm font-mono-tabular font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600"
+          />
+          {hasMatchingTarget && (
+            <div className="px-3 py-2 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs font-bold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+              <span>Mesmo veículo/alvo identificado</span>
             </div>
+          )}
+        </div>
 
-            <div className="grid grid-cols-1 gap-3">
-              <button
-                type="button"
-                disabled={gpsLoading}
-                onClick={() =>
-                  void onConfirmHere(
-                    selectedCategory,
-                    selectedSubcategory,
-                    finalTag
-                  )
-                }
-                className="min-h-[58px] px-4 rounded-2xl bg-red-600 hover:bg-red-700 disabled:opacity-70 text-white font-extrabold text-sm flex items-center justify-center gap-2.5 shadow-lg active:scale-[0.99] transition-all"
-              >
-                {gpsLoading ? (
-                  <Navigation className="w-5 h-5 animate-spin shrink-0" />
-                ) : (
-                  <Crosshair className="w-5 h-5 shrink-0" />
-                )}
-                <span>
-                  {gpsLoading ? 'OBTENDO GPS...' : '📍 Aqui onde estou'}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  onChoosePointOnMap(
-                    selectedCategory,
-                    selectedSubcategory,
-                    finalTag
-                  )
-                }
-                className="min-h-[58px] px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-sm flex items-center justify-center gap-2.5 shadow-md active:scale-[0.99] transition-all"
-              >
-                <MapPin className="w-5 h-5 shrink-0 text-blue-300" />
-                <span>🗺️ Apontar no mapa</span>
-              </button>
-            </div>
-          </div>
-        ) : !selectedCategory ? (
+        {!selectedCategory ? (
           <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
             {categories.length === 0 ? (
               <div className="col-span-full py-10 text-center text-sm text-slate-500">
@@ -353,7 +253,9 @@ export const OccurrencePickerModal: React.FC<OccurrencePickerModalProps> = ({
                   <button
                     key={sub.id}
                     type="button"
-                    onClick={() => setSelectedSubcategory(sub)}
+                    onClick={() =>
+                      onSelectSubcategory(selectedCategory, sub, finalTag)
+                    }
                     className="min-h-[76px] p-3.5 rounded-2xl border-2 border-slate-200 bg-white hover:border-blue-600 hover:bg-blue-50/40 active:scale-[0.98] transition-all flex items-center gap-3.5 text-left shadow-xs"
                   >
                     <OccurrenceAvatar
@@ -376,7 +278,7 @@ export const OccurrencePickerModal: React.FC<OccurrencePickerModalProps> = ({
                       <div className="text-xs font-medium text-slate-500 mt-0.5">
                         {sub.pulseEffect
                           ? 'Alerta visual piscante'
-                          : 'Toque para escolher local'}
+                          : 'Toque para marcar na rua'}
                       </div>
                     </div>
                   </button>

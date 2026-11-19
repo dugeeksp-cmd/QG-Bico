@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, Crosshair, Menu } from 'lucide-react';
+import { ChevronDown, Crosshair, Map as MapIcon, Menu } from 'lucide-react';
 import { useRadarData } from './hooks/useRadarData';
 import { AppScreenKey, StoreUnit, UserAccount } from './types/radar';
 import {
@@ -157,6 +157,7 @@ export default function App() {
     deleteCategory,
     addSubcategory,
     updateSubcategory,
+    toggleQuickPinSubcategory,
     deleteSubcategory,
     addOccurrence,
     updateOccurrenceSighting,
@@ -646,51 +647,82 @@ export default function App() {
           )}
         </div>
 
-        {/* Direita: Botão de centralizar no meu GPS */}
+        {/* Direita: Atalho rápido para o Mapa (visível em todas as telas) + Centralizar GPS */}
         {canViewMap ? (
-          <button
-            type="button"
-            onClick={handleCenterOnGps}
-            aria-label="Centralizar no meu GPS"
-            title="Centralizar no meu GPS"
-            className="min-h-[44px] min-w-[44px] rounded-xl text-blue-700 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-center shrink-0 transition-colors"
-          >
-            <Crosshair className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setDrawerOpen(false);
+                setChatModalOpen(false);
+                setQaModalOpen(false);
+                setActiveScreen('map');
+              }}
+              aria-label="Ir para o Mapa"
+              title="Ir para o Mapa"
+              aria-current={resolvedScreen === 'map' ? 'page' : undefined}
+              className={`min-h-[42px] px-2.5 sm:px-3 rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 transition-colors ${
+                resolvedScreen === 'map'
+                  ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                  : 'bg-blue-700 hover:bg-blue-800 text-white shadow-sm'
+              }`}
+            >
+              <MapIcon className="w-4 h-4 shrink-0" />
+              <span className="hidden xs:inline sm:inline">Mapa</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleCenterOnGps}
+              aria-label="Centralizar no meu GPS"
+              title="Centralizar no meu GPS"
+              className="min-h-[42px] min-w-[42px] rounded-xl text-blue-700 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-center shrink-0 transition-colors"
+            >
+              <Crosshair className="w-5 h-5" />
+            </button>
+          </div>
         ) : (
           <div className="w-[44px] shrink-0" aria-hidden="true" />
         )}
       </header>
 
       <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {resolvedScreen === 'map' && canViewMap && (
-          <SharedRadarMapView
-            currentUser={currentUser}
-            users={users}
-            stores={stores}
-            activeLinkedStore={activeLinkedStore}
-            categories={categories}
-            subcategories={subcategories}
-            occurrences={occurrences}
-            alertAudit={alertAudit}
-            unreadChatCount={unreadChatCount}
-            focusOccurrenceId={focusOccurrenceId}
-            focusStoreId={focusStoreId}
-            centerGpsSignal={centerGpsSignal}
-            onFocusHandled={() => {
-              setFocusOccurrenceId(null);
-              setFocusStoreId(null);
-            }}
-            onAddOccurrence={addOccurrence}
-            onUpdateOccurrenceSighting={updateOccurrenceSighting}
-            onDismissOccurrenceAlert={dismissOccurrenceAlert}
-            onMarkBellAlertRead={markOccurrenceBellRead}
-            onOpenChatModal={() => setChatModalOpen(true)}
-            onDeleteOccurrence={deleteOccurrence}
-            onToggleStoreOpen={handleToggleStoreOpenWithCheck}
-            onRequestCloseStore={setClosingModalStore}
-            onOpenStoreOptions={(store) => setMapOptionsStoreId(store.id)}
-          />
+        {canViewMap && (
+          <div
+            className={
+              resolvedScreen === 'map'
+                ? 'flex-1 flex flex-col min-h-0 overflow-hidden'
+                : 'hidden'
+            }
+          >
+            <SharedRadarMapView
+              isMapVisible={resolvedScreen === 'map'}
+              currentUser={currentUser}
+              users={users}
+              stores={stores}
+              activeLinkedStore={activeLinkedStore}
+              categories={categories}
+              subcategories={subcategories}
+              occurrences={occurrences}
+              alertAudit={alertAudit}
+              unreadChatCount={unreadChatCount}
+              focusOccurrenceId={focusOccurrenceId}
+              focusStoreId={focusStoreId}
+              centerGpsSignal={centerGpsSignal}
+              onFocusHandled={() => {
+                setFocusOccurrenceId(null);
+                setFocusStoreId(null);
+              }}
+              onAddOccurrence={addOccurrence}
+              onUpdateOccurrenceSighting={updateOccurrenceSighting}
+              onDismissOccurrenceAlert={dismissOccurrenceAlert}
+              onMarkBellAlertRead={markOccurrenceBellRead}
+              onOpenChatModal={() => setChatModalOpen(true)}
+              onDeleteOccurrence={deleteOccurrence}
+              onToggleStoreOpen={handleToggleStoreOpenWithCheck}
+              onRequestCloseStore={setClosingModalStore}
+              onOpenStoreOptions={(store) => setMapOptionsStoreId(store.id)}
+            />
+          </div>
         )}
 
         {resolvedScreen === 'finance' &&
@@ -825,6 +857,7 @@ export default function App() {
             onDeleteCategory={deleteCategory}
             onAddSubcategory={addSubcategory}
             onUpdateSubcategory={updateSubcategory}
+            onToggleQuickPinSubcategory={toggleQuickPinSubcategory}
             onDeleteSubcategory={deleteSubcategory}
             onDeleteOccurrence={deleteOccurrence}
             onClearAllOccurrences={clearAllOccurrences}
@@ -944,6 +977,7 @@ export default function App() {
       <FocusLockScreenModal
         isOpen={isFocusLocked}
         currentUser={currentUser}
+        version={qaChangelog.version}
         isQuickTestSession={isQuickTestSession}
         onVerifyPassword={verifySessionPassword}
         onUnlock={() => setIsFocusLocked(false)}

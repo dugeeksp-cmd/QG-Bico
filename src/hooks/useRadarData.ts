@@ -58,7 +58,7 @@ export function useRadarData() {
   const [occurrences, setOccurrences] = useState<MapOccurrence[]>([]);
   const [alertAudit, setAlertAudit] = useState<AlertAuditEntry[]>([]);
   const [qaChangelog, setQaChangelog] = useState<QaChangelogState>({
-    version: '5.0',
+    version: '6.0',
     items: [],
   });
   const [loading, setLoading] = useState(true);
@@ -559,6 +559,17 @@ export function useRadarData() {
     []
   );
 
+  const toggleQuickPinSubcategory = useCallback(
+    async (subcategoryId: string) => {
+      if (!currentUser) throw new Error('Sessão expirada.');
+      return DataService.toggleQuickPinSubcategory(
+        subcategoryId,
+        currentUser.role
+      );
+    },
+    [currentUser]
+  );
+
   const deleteSubcategory = useCallback(async (id: string) => {
     await DataService.deleteSubcategory(id);
   }, []);
@@ -797,6 +808,7 @@ export function useRadarData() {
     deleteCategory,
     addSubcategory,
     updateSubcategory,
+    toggleQuickPinSubcategory,
     deleteSubcategory,
     addOccurrence,
     updateOccurrenceSighting,

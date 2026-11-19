@@ -60,6 +60,51 @@
   color: #475569 !important;
 }
 
+/* Modo Limpo / Noturno Azul: fundo marinho profundo e ruas em azul destacado sem poluição de POIs */
+.radar-map-clean-blue.leaflet-container {
+  background: #071329 !important;
+}
+
+.radar-map-clean-blue .leaflet-tile-pane {
+  filter: sepia(1) hue-rotate(188deg) saturate(2.7) brightness(0.98) contrast(1.22);
+}
+
+.radar-map-clean-blue .leaflet-control-attribution {
+  background: rgba(7, 19, 41, 0.82) !important;
+  color: #93c5fd !important;
+}
+
+.radar-map-clean-blue .leaflet-control-attribution a {
+  color: #60a5fa !important;
+}
+
+.radar-style-control {
+  margin-top: 6px !important;
+}
+
+.radar-style-toggle-btn {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: #ffffff;
+  color: #0f172a;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.radar-style-toggle-btn:hover {
+  background: #f1f5f9;
+}
+
+.radar-style-toggle-btn.is-active {
+  background: #0f295c;
+  color: #93c5fd;
+}
+
 /* Animação do círculo de perímetro em alerta (piscando em vermelho no SVG do Leaflet) */
 @keyframes radarCirclePulse {
   0%, 100% {

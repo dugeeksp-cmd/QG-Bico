@@ -35,7 +35,7 @@ const SECTION_META: {
 }[] = [
   {
     key: 'features',
-    title: 'Funcionalidades Criadas (v1.0 a v5.0)',
+    title: 'Funcionalidades Criadas (v1.0 a v6.0)',
     subtitle: 'Entregas já implementadas para validação de qualidade.',
   },
   {
@@ -306,16 +306,16 @@ export const VersionQaModal: React.FC<VersionQaModalProps> = ({
           </button>
         </div>
 
-        {/* Banner Fase Conectividade v5.0 */}
+        {/* Banner Versão 6.0 */}
         <div
           role="status"
           className="px-5 sm:px-6 py-3 bg-blue-50 border-b border-blue-200 flex flex-wrap items-center gap-2.5"
         >
           <span className="px-2 py-0.5 rounded-md bg-blue-700 text-white text-[11px] font-extrabold uppercase tracking-wide shrink-0">
-            VERSÃO 5.0 · CONECTIVIDADE
+            VERSÃO 6.0
           </span>
           <span className="text-xs sm:text-sm font-extrabold text-blue-950">
-            Confirmação segura no cadeado com redirecionamento externo para google.com e pipeline GitHub Actions (FTP) ativo
+            Correções de Estabilidade do Mapa, Fluxo Rápido de Marcação e Botão de Emergência
           </span>
         </div>
 

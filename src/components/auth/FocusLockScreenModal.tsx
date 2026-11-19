@@ -11,6 +11,7 @@ import { ROLE_LABELS, UserAccount } from '../../types/radar';
 
 interface FocusLockScreenModalProps {
   isOpen: boolean;
+  version?: string;
   currentUser: UserAccount;
   isQuickTestSession: boolean;
   onVerifyPassword: (password: string) => Promise<boolean>;
@@ -26,6 +27,7 @@ function getInitials(name: string): string {
 
 export const FocusLockScreenModal: React.FC<FocusLockScreenModalProps> = ({
   isOpen,
+  version = '6.0',
   currentUser,
   isQuickTestSession,
   onVerifyPassword,
@@ -77,13 +79,18 @@ export const FocusLockScreenModal: React.FC<FocusLockScreenModalProps> = ({
           <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-400/40 text-amber-300 flex items-center justify-center shrink-0">
             <Lock className="w-6 h-6" />
           </div>
-          <div className="min-w-0">
-            <h1
-              id="focus-lock-title"
-              className="text-lg font-extrabold text-white tracking-tight"
-            >
-              Sessão Bloqueada (Anti-Espião)
-            </h1>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <h1
+                id="focus-lock-title"
+                className="text-lg font-extrabold text-white tracking-tight"
+              >
+                Sessão Bloqueada (Anti-Espião)
+              </h1>
+              <span className="px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 text-[10px] font-mono-tabular font-bold text-slate-300 shrink-0">
+                v{version}
+              </span>
+            </div>
             <p className="text-xs text-slate-400 mt-0.5 leading-snug">
               Proteção automática ativada por troca de guia, minimização ou
               perda de foco.

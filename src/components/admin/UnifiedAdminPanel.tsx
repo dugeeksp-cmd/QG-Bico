@@ -147,6 +147,9 @@ interface UnifiedAdminPanelProps {
     id: string,
     updates: Partial<Omit<CatalogSubcategory, 'id' | 'createdAt'>>
   ) => Promise<CatalogSubcategory>;
+  onToggleQuickPinSubcategory: (
+    subcategoryId: string
+  ) => Promise<CatalogSubcategory[]>;
   onDeleteSubcategory: (id: string) => Promise<void>;
   onDeleteOccurrence: (id: string) => Promise<void>;
   onClearAllOccurrences: () => Promise<void>;
@@ -195,6 +198,7 @@ export const UnifiedAdminPanel: React.FC<UnifiedAdminPanelProps> = ({
   onDeleteCategory,
   onAddSubcategory,
   onUpdateSubcategory,
+  onToggleQuickPinSubcategory,
   onDeleteSubcategory,
   onDeleteOccurrence,
   onClearAllOccurrences,
@@ -609,6 +613,14 @@ export const UnifiedAdminPanel: React.FC<UnifiedAdminPanelProps> = ({
   const [confirmDeleteCatId, setConfirmDeleteCatId] = useState<string | null>(
     null
   );
+  const [quickPinError, setQuickPinError] = useState<string | null>(null);
+  const quickPinSubcategories = useMemo(
+    () =>
+      subcategories
+        .filter((s) => Boolean(s.isQuickPin))
+        .sort((a, b) => (a.quickPinOrder || 99) - (b.quickPinOrder || 99)),
+    [subcategories]
+  );
 
   const [subModalOpen, setSubModalOpen] = useState(false);
   const [subParentCatId, setSubParentCatId] = useState<string>('');
@@ -977,6 +989,66 @@ export const UnifiedAdminPanel: React.FC<UnifiedAdminPanelProps> = ({
               </button>
             </div>
 
+            {currentUser.role === 'SUPER_ADMIN' && (
+              <div className="p-4 rounded-2xl border border-amber-200 bg-amber-50/80 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs sm:text-sm font-extrabold text-amber-950">
+                    <Star className="w-4 h-4 fill-amber-500 text-amber-600 shrink-0" />
+                    <span>
+                      Barra Rápida do Mapa ({quickPinSubcategories.length}/3 tipos principais)
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-semibold text-amber-900">
+                    Marque até 3 itens abaixo para aparecerem direto ao tocar em Marcar Carro
+                  </span>
+                </div>
+
+                {quickPinSubcategories.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {quickPinSubcategories.map((qp, idx) => (
+                      <button
+                        key={qp.id}
+                        type="button"
+                        onClick={async () => {
+                          setQuickPinError(null);
+                          try {
+                            await onToggleQuickPinSubcategory(qp.id);
+                          } catch (err) {
+                            setQuickPinError(
+                              err instanceof Error
+                                ? err.message
+                                : 'Erro ao atualizar barra rápida.'
+                            );
+                          }
+                        }}
+                        title="Toque para remover da barra rápida"
+                        className="min-h-[34px] px-3 rounded-xl bg-white border border-amber-300 text-slate-900 text-xs font-bold inline-flex items-center gap-1.5 hover:bg-amber-100/60"
+                      >
+                        <span className="font-mono-tabular text-amber-700 font-extrabold">
+                          #{idx + 1}
+                        </span>
+                        <span>{qp.name}</span>
+                        <X className="w-3.5 h-3.5 text-slate-400" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {quickPinError && (
+                  <div className="px-3 py-2 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-bold flex items-center justify-between gap-2">
+                    <span>{quickPinError}</span>
+                    <button
+                      type="button"
+                      onClick={() => setQuickPinError(null)}
+                      className="text-red-700 hover:text-red-900 font-extrabold"
+                    >
+                      OK
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="space-y-3">
               {categories.map((cat) => {
                 const subs = subcategories.filter(
@@ -1101,58 +1173,116 @@ export const UnifiedAdminPanel: React.FC<UnifiedAdminPanelProps> = ({
                           </p>
                         ) : (
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                            {subs.map((sub) => (
-                              <div
-                                key={sub.id}
-                                className="p-3 rounded-xl border border-slate-200 flex items-center justify-between gap-2.5"
-                              >
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                  <OccurrenceAvatar
-                                    spec={{
-                                      visualType: sub.visualType,
-                                      vehicleIconKey: sub.vehicleIconKey,
-                                      symbolKey: sub.symbolKey,
-                                      emoji: sub.emoji,
-                                      customImageDataUrl:
-                                        sub.customImageDataUrl,
-                                      colorHex: sub.colorHex,
-                                      pulseEffect: sub.pulseEffect,
-                                    }}
-                                    alt={sub.name}
-                                    className="w-10 h-10"
-                                  />
-                                  <div className="min-w-0">
-                                    <div className="text-xs font-bold text-slate-900 truncate">
-                                      {sub.name}
-                                    </div>
-                                    <div className="text-[11px] text-slate-500">
-                                      {sub.pulseEffect
-                                        ? 'Piscante · Alerta'
-                                        : 'Padrão'}
+                            {subs.map((sub) => {
+                              const isQuickPinned = Boolean(sub.isQuickPin);
+                              return (
+                                <div
+                                  key={sub.id}
+                                  className={`p-3 rounded-xl border flex items-center justify-between gap-2 ${
+                                    isQuickPinned
+                                      ? 'border-amber-300 bg-amber-50/40'
+                                      : 'border-slate-200'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2.5 min-w-0">
+                                    <OccurrenceAvatar
+                                      spec={{
+                                        visualType: sub.visualType,
+                                        vehicleIconKey: sub.vehicleIconKey,
+                                        symbolKey: sub.symbolKey,
+                                        emoji: sub.emoji,
+                                        customImageDataUrl:
+                                          sub.customImageDataUrl,
+                                        colorHex: sub.colorHex,
+                                        pulseEffect: sub.pulseEffect,
+                                      }}
+                                      alt={sub.name}
+                                      className="w-10 h-10"
+                                    />
+                                    <div className="min-w-0">
+                                      <div className="text-xs font-bold text-slate-900 truncate">
+                                        {sub.name}
+                                      </div>
+                                      <div className="text-[11px] text-slate-500 flex items-center gap-1.5 flex-wrap">
+                                        <span>
+                                          {sub.pulseEffect
+                                            ? 'Piscante · Alerta'
+                                            : 'Padrão'}
+                                        </span>
+                                        {isQuickPinned && (
+                                          <span className="text-amber-700 font-extrabold">
+                                            · Barra Rápida
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
 
-                                <div className="flex items-center gap-1 shrink-0">
-                                  <button
-                                    type="button"
-                                    onClick={() => openEditSubcategory(sub)}
-                                    aria-label={`Editar ${sub.name}`}
-                                    className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"
-                                  >
-                                    <Pencil className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => onDeleteSubcategory(sub.id)}
-                                    aria-label={`Excluir ${sub.name}`}
-                                    className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-lg text-red-600 hover:bg-red-50"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    {currentUser.role === 'SUPER_ADMIN' && (
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          setQuickPinError(null);
+                                          try {
+                                            await onToggleQuickPinSubcategory(
+                                              sub.id
+                                            );
+                                          } catch (err) {
+                                            setQuickPinError(
+                                              err instanceof Error
+                                                ? err.message
+                                                : 'Limite de 3 tipos principais atingido.'
+                                            );
+                                          }
+                                        }}
+                                        title={
+                                          isQuickPinned
+                                            ? 'Remover da barra rápida do mapa'
+                                            : 'Fixar na barra rápida do mapa (máx. 3)'
+                                        }
+                                        aria-label={
+                                          isQuickPinned
+                                            ? `Remover ${sub.name} da barra rápida`
+                                            : `Fixar ${sub.name} na barra rápida`
+                                        }
+                                        aria-pressed={isQuickPinned}
+                                        className={`min-h-[38px] px-2.5 flex items-center justify-center gap-1 rounded-lg text-[11px] font-extrabold transition-colors ${
+                                          isQuickPinned
+                                            ? 'bg-amber-500 text-white hover:bg-amber-600'
+                                            : 'border border-slate-200 bg-white text-slate-600 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-300'
+                                        }`}
+                                      >
+                                        <Star
+                                          className={`w-3.5 h-3.5 ${
+                                            isQuickPinned ? 'fill-white' : ''
+                                          }`}
+                                        />
+                                        <span className="hidden sm:inline">
+                                          {isQuickPinned ? 'Principal' : 'Fixar'}
+                                        </span>
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => openEditSubcategory(sub)}
+                                      aria-label={`Editar ${sub.name}`}
+                                      className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => onDeleteSubcategory(sub.id)}
+                                      aria-label={`Excluir ${sub.name}`}
+                                      className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-lg text-red-600 hover:bg-red-50"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </div>

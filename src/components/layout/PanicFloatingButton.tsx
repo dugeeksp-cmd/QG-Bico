@@ -7,6 +7,7 @@ interface PanicFloatingButtonProps {
 
 const BUTTON_SIZE = 48;
 const MARGIN = 12;
+const DRAG_THRESHOLD_PX = 12;
 
 export const PanicFloatingButton: React.FC<PanicFloatingButtonProps> = ({
   onRequestExit,
@@ -22,6 +23,7 @@ export const PanicFloatingButton: React.FC<PanicFloatingButtonProps> = ({
   const onRequestExitRef = useRef(onRequestExit);
   onRequestExitRef.current = onRequestExit;
 
+  const suppressNextClickRef = useRef(false);
   const draggingRef = useRef<{
     active: boolean;
     pointerId: number | null;
@@ -58,48 +60,8 @@ export const PanicFloatingButton: React.FC<PanicFloatingButtonProps> = ({
     return () => window.removeEventListener('resize', clampToViewport);
   }, []);
 
-  useEffect(() => {
-    const handlePointerMove = (e: PointerEvent) => {
-      const drag = draggingRef.current;
-      if (!drag.active || drag.pointerId !== e.pointerId) return;
-
-      const dx = e.clientX - drag.startX;
-      const dy = e.clientY - drag.startY;
-      if (Math.hypot(dx, dy) > 5) {
-        drag.moved = true;
-      }
-
-      const maxX = Math.max(MARGIN, window.innerWidth - BUTTON_SIZE - MARGIN);
-      const maxY = Math.max(64, window.innerHeight - BUTTON_SIZE - 16);
-      setPos({
-        x: Math.min(Math.max(MARGIN, drag.origX + dx), maxX),
-        y: Math.min(Math.max(64, drag.origY + dy), maxY),
-      });
-    };
-
-    const handlePointerUp = (e: PointerEvent) => {
-      const drag = draggingRef.current;
-      if (!drag.active || drag.pointerId !== e.pointerId) return;
-      const wasClick = !drag.moved;
-      drag.active = false;
-      drag.pointerId = null;
-      if (wasClick) {
-        onRequestExitRef.current();
-      }
-    };
-
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
-    window.addEventListener('pointercancel', handlePointerUp);
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
-      window.removeEventListener('pointercancel', handlePointerUp);
-    };
-  }, []);
-
   const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-    e.preventDefault();
+    suppressNextClickRef.current = false;
     draggingRef.current = {
       active: true,
       pointerId: e.pointerId,
@@ -109,13 +71,59 @@ export const PanicFloatingButton: React.FC<PanicFloatingButtonProps> = ({
       origY: pos.y,
       moved: false,
     };
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignora caso pointer capture não seja suportado
+    }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onRequestExitRef.current();
+  const handlePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = draggingRef.current;
+    if (!drag.active || drag.pointerId !== e.pointerId) return;
+
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    if (Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
+      drag.moved = true;
     }
+    if (!drag.moved) return;
+
+    const maxX = Math.max(MARGIN, window.innerWidth - BUTTON_SIZE - MARGIN);
+    const maxY = Math.max(64, window.innerHeight - BUTTON_SIZE - 16);
+    setPos({
+      x: Math.min(Math.max(MARGIN, drag.origX + dx), maxX),
+      y: Math.min(Math.max(64, drag.origY + dy), maxY),
+    });
+  };
+
+  const finishPointerDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = draggingRef.current;
+    if (!drag.active || drag.pointerId !== e.pointerId) return;
+    if (drag.moved) {
+      suppressNextClickRef.current = true;
+      window.setTimeout(() => {
+        suppressNextClickRef.current = false;
+      }, 120);
+    }
+    drag.active = false;
+    drag.pointerId = null;
+    try {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      // Ignora caso já tenha sido liberado
+    }
+  };
+
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false;
+      return;
+    }
+    onRequestExitRef.current();
   };
 
   return (
@@ -129,7 +137,10 @@ export const PanicFloatingButton: React.FC<PanicFloatingButtonProps> = ({
       <button
         type="button"
         onPointerDown={handlePointerDown}
-        onKeyDown={handleKeyDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishPointerDrag}
+        onPointerCancel={finishPointerDrag}
+        onClick={handleClick}
         aria-label="Sair do sistema com confirmação (arraste para mover)"
         title="Arraste para mover · Toque para encerrar sessão (com confirmação)"
         className="w-12 h-12 rounded-full bg-slate-900 hover:bg-red-700 active:scale-95 text-white border-2 border-slate-700 shadow-xl flex items-center justify-center touch-none cursor-grab active:cursor-grabbing select-none transition-all"

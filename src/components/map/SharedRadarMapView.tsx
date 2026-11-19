@@ -5,12 +5,15 @@ import {
   AlertTriangle,
   Bell,
   Building2,
+  Crosshair,
   Eye,
   Ghost,
+  Layers,
   ListFilter,
   Lock,
   Mail,
   MapPin,
+  Navigation,
   Plus,
   Power,
   Tag,
@@ -47,6 +50,7 @@ import { NearbyAlertItem, NearbyAlertsModal } from './NearbyAlertsModal';
 const DEFAULT_SP_CENTER: [number, number] = [-23.5878, -46.7525];
 
 interface SharedRadarMapViewProps {
+  isMapVisible?: boolean;
   currentUser: UserAccount;
   users: UserAccount[];
   stores: StoreUnit[];
@@ -199,6 +203,7 @@ function buildOccurrencePopupHtml(
 }
 
 export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
+  isMapVisible = true,
   currentUser,
   users,
   stores,
@@ -229,6 +234,8 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const styleBtnRef = useRef<HTMLButtonElement | null>(null);
   const storesLayerRef = useRef<L.LayerGroup | null>(null);
   const occurrencesLayerRef = useRef<L.LayerGroup | null>(null);
   const occurrenceRefsById = useRef<Map<string, L.Marker>>(new Map());
@@ -240,11 +247,13 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
   const tapTimerRef = useRef<number | null>(null);
 
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [mapStyle, setMapStyle] = useState<'default' | 'clean_blue'>('default');
+  const [quickBarOpen, setQuickBarOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [bellOpen, setBellOpen] = useState(false);
   const [showLastHour, setShowLastHour] = useState(false);
 
-  // Modo controlado 1: usuário clicou em "🗺️ Apontar no mapa" ao criar ocorrência
+  // Modo direto no mapa: usuário escolheu um tipo na barra rápida ou em "Outros"
   const [pendingMapPointDraft, setPendingMapPointDraft] = useState<{
     category: CatalogCategory;
     subcategory: CatalogSubcategory;
@@ -295,6 +304,51 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
       null,
     [categories]
   );
+
+  // Até 3 tipos principais fixados para a barra rápida do mapa (configurados pelo Super Admin)
+  const quickPinSubcategories = useMemo(() => {
+    const pinned = subcategories
+      .filter((s) => Boolean(s.isQuickPin))
+      .sort((a, b) => (a.quickPinOrder || 99) - (b.quickPinOrder || 99));
+    if (pinned.length >= 3) return pinned.slice(0, 3);
+
+    const pickedIds = new Set(pinned.map((s) => s.id));
+    const fallbackOrder = ['sub-veh-pm', 'sub-veh-policia_civil', 'sub-veh-gcm'];
+    const result = [...pinned];
+
+    fallbackOrder.forEach((fid) => {
+      if (result.length >= 3 || pickedIds.has(fid)) return;
+      const found = subcategories.find((s) => s.id === fid);
+      if (found) {
+        result.push(found);
+        pickedIds.add(found.id);
+      }
+    });
+
+    if (result.length < 3 && primaryCategory) {
+      subcategories
+        .filter((s) => s.categoryId === primaryCategory.id && !pickedIds.has(s.id))
+        .forEach((s) => {
+          if (result.length < 3) {
+            result.push(s);
+            pickedIds.add(s.id);
+          }
+        });
+    }
+
+    if (result.length < 3) {
+      subcategories
+        .filter((s) => !pickedIds.has(s.id))
+        .forEach((s) => {
+          if (result.length < 3) {
+            result.push(s);
+            pickedIds.add(s.id);
+          }
+        });
+    }
+
+    return result.slice(0, 3);
+  }, [subcategories, primaryCategory]);
 
   // Classifica ocorrências por fase (Ativo 0-20m, Sombra 20-30m, Projeção 30-60m)
   const phasedOccurrences = useMemo(() => {
@@ -476,22 +530,69 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
     [drawGpsMarker, stores]
   );
 
-  // Confirmar ocorrência no GPS atual ("📍 Aqui onde estou")
-  const handleConfirmOccurrenceHere = async (
-    category: CatalogCategory,
-    subcategory: CatalogSubcategory,
-    tag?: string
-  ) => {
-    setPickerOpen(false);
+  const notifyAfterCreate = useCallback(
+    (
+      created: MapOccurrence,
+      subcategory: CatalogSubcategory,
+      lat: number,
+      lng: number
+    ) => {
+      const normTag = created.tag?.trim().toUpperCase();
+      const isRepeatTarget =
+        Boolean(normTag) &&
+        (occurrencesRef.current.some(
+          (o) => o.id !== created.id && o.tag?.trim().toUpperCase() === normTag
+        ) ||
+          alertAudit.some(
+            (a) =>
+              a.occurrenceId !== created.id &&
+              a.tag?.trim().toUpperCase() === normTag
+          ));
+
+      const hitStores = stores.filter(
+        (s) => getDistanceMeters(lat, lng, s.lat, s.lng) <= s.radiusKm * 1000
+      );
+
+      if (isRepeatTarget) {
+        setToastMessage({
+          text: `Mesmo veículo/alvo identificado (${created.tag})! Rastro atualizado no mapa.`,
+          tone: 'warn',
+        });
+      } else if (hitStores.length > 0) {
+        setToastMessage({
+          text: `${subcategory.name} registrado! Alerta ativado em: ${hitStores
+            .map((s) => s.name)
+            .join(', ')}.`,
+          tone: 'warn',
+        });
+      } else {
+        setToastMessage({
+          text: `${subcategory.name} marcado no mapa (ativo por 20 min).`,
+          tone: 'info',
+        });
+      }
+    },
+    [alertAudit, stores]
+  );
+
+  // Marcação instantânea via GPS a partir do botão flutuante "📍 Onde eu estou"
+  const handleConfirmHereFromDraft = async () => {
+    const draft = pendingMapPointDraft;
+    if (!draft || gpsLoading) return;
+
     const submitAtCoords = async (lat: number, lng: number) => {
+      setPendingMapPointDraft(null);
       const created = await onAddOccurrence(
-        category,
-        subcategory,
+        draft.category,
+        draft.subcategory,
         lat,
         lng,
-        tag
+        draft.tag
       );
-      notifyAfterCreate(created, subcategory, lat, lng);
+      notifyAfterCreate(created, draft.subcategory, lat, lng);
+      window.requestAnimationFrame(() => {
+        mapInstanceRef.current?.invalidateSize({ pan: false, animate: false });
+      });
     };
 
     if (!navigator.geolocation) {
@@ -541,51 +642,6 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
       { enableHighAccuracy: true, timeout: 7000, maximumAge: 10000 }
     );
   };
-
-  const notifyAfterCreate = useCallback(
-    (
-      created: MapOccurrence,
-      subcategory: CatalogSubcategory,
-      lat: number,
-      lng: number
-    ) => {
-      const normTag = created.tag?.trim().toUpperCase();
-      const isRepeatTarget =
-        Boolean(normTag) &&
-        (occurrencesRef.current.some(
-          (o) => o.id !== created.id && o.tag?.trim().toUpperCase() === normTag
-        ) ||
-          alertAudit.some(
-            (a) =>
-              a.occurrenceId !== created.id &&
-              a.tag?.trim().toUpperCase() === normTag
-          ));
-
-      const hitStores = stores.filter(
-        (s) => getDistanceMeters(lat, lng, s.lat, s.lng) <= s.radiusKm * 1000
-      );
-
-      if (isRepeatTarget) {
-        setToastMessage({
-          text: `Mesmo veículo/alvo identificado (${created.tag})! Rastro atualizado no mapa.`,
-          tone: 'warn',
-        });
-      } else if (hitStores.length > 0) {
-        setToastMessage({
-          text: `${subcategory.name} registrado! Alerta ativado em: ${hitStores
-            .map((s) => s.name)
-            .join(', ')}.`,
-          tone: 'warn',
-        });
-      } else {
-        setToastMessage({
-          text: `${subcategory.name} marcado no mapa (ativo por 20 min).`,
-          tone: 'info',
-        });
-      }
-    },
-    [alertAudit, stores]
-  );
 
   // Refs de callbacks para os event listeners do Leaflet (evita re-instanciar o mapa)
   const onAddOccurrenceRef = useRef(onAddOccurrence);
@@ -685,10 +741,43 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
 
     L.control.zoom({ position: 'topright' }).addTo(map);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
-      maxZoom: 19,
-    }).addTo(map);
+    // Botão compacto de alternância de camada/tema do mapa logo abaixo do zoom (+/-)
+    const StyleToggleControl = L.Control.extend({
+      options: { position: 'topright' as L.ControlPosition },
+      onAdd: () => {
+        const container = L.DomUtil.create(
+          'div',
+          'leaflet-bar leaflet-control radar-style-control'
+        );
+        const btn = L.DomUtil.create(
+          'button',
+          'radar-style-toggle-btn',
+          container
+        ) as HTMLButtonElement;
+        btn.type = 'button';
+        btn.title = 'Alternar para Mapa Limpo / Noturno Azul';
+        btn.setAttribute('aria-label', 'Alternar estilo do mapa');
+        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`;
+        L.DomEvent.disableClickPropagation(container);
+        L.DomEvent.disableScrollPropagation(container);
+        btn.onclick = (ev) => {
+          ev.preventDefault();
+          setMapStyle((prev) => (prev === 'default' ? 'clean_blue' : 'default'));
+        };
+        styleBtnRef.current = btn;
+        return container;
+      },
+    });
+    new StyleToggleControl().addTo(map);
+
+    const initialTiles = L.tileLayer(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19,
+      }
+    ).addTo(map);
+    tileLayerRef.current = initialTiles;
 
     const storesLayer = L.layerGroup().addTo(map);
     const occurrencesLayer = L.layerGroup().addTo(map);
@@ -707,7 +796,7 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
       );
     }
 
-    // 1 toque = zoomIn (ou ação controlada se em modo "Eu vi!" / "Apontar no mapa")
+    // 1 toque = zoomIn (ou ação controlada se em modo "Eu vi!" / marcação direta na rua)
     map.on('click', (e: L.LeafletMouseEvent) => {
       const sightingTarget = sightingTargetOccRef.current;
       if (sightingTarget) {
@@ -722,6 +811,12 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
             setToastMessage({
               text: `${updated.subcategoryName} atualizado na rua! Rastro traçado e cronômetro reiniciado (20 min).`,
               tone: 'info',
+            });
+            window.requestAnimationFrame(() => {
+              mapInstanceRef.current?.invalidateSize({
+                pan: false,
+                animate: false,
+              });
             });
           });
         return;
@@ -749,6 +844,12 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
               e.latlng.lat,
               e.latlng.lng
             );
+            window.requestAnimationFrame(() => {
+              mapInstanceRef.current?.invalidateSize({
+                pan: false,
+                animate: false,
+              });
+            });
           });
         return;
       }
@@ -787,6 +888,23 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
     occurrencesLayerRef.current = occurrencesLayer;
     userGpsLayerRef.current = gpsLayer;
 
+    // Garante recálculo imediato caso container ou janela mudem de tamanho (evita mapa branco)
+    const handleViewportResize = () => {
+      map.invalidateSize({ pan: false, animate: false });
+    };
+    window.addEventListener('resize', handleViewportResize);
+    window.visualViewport?.addEventListener('resize', handleViewportResize);
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && mapContainerRef.current) {
+      resizeObserver = new ResizeObserver(() => {
+        window.requestAnimationFrame(() => {
+          map.invalidateSize({ pan: false, animate: false });
+        });
+      });
+      resizeObserver.observe(mapContainerRef.current);
+    }
+
     // Auto-centraliza via GPS ao abrir o mapa
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -807,17 +925,98 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
     }
 
     return () => {
+      window.removeEventListener('resize', handleViewportResize);
+      window.visualViewport?.removeEventListener('resize', handleViewportResize);
+      resizeObserver?.disconnect();
       if (tapTimerRef.current) {
         window.clearTimeout(tapTimerRef.current);
         tapTimerRef.current = null;
       }
       map.remove();
       mapInstanceRef.current = null;
+      tileLayerRef.current = null;
+      styleBtnRef.current = null;
       storesLayerRef.current = null;
       occurrencesLayerRef.current = null;
       userGpsLayerRef.current = null;
     };
   }, [canViewMap]);
+
+  // Alterna camada de tiles e tema visual (Mapa Padrão <-> Mapa Limpo Noturno Azul) sem desmontar o mapa
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (tileLayerRef.current) {
+      map.removeLayer(tileLayerRef.current);
+      tileLayerRef.current = null;
+    }
+
+    const container = map.getContainer();
+    if (mapStyle === 'clean_blue') {
+      container.classList.add('radar-map-clean-blue');
+      tileLayerRef.current = L.tileLayer(
+        'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
+        {
+          attribution: '&copy; OpenStreetMap &copy; CARTO',
+          subdomains: 'abcd',
+          maxZoom: 19,
+        }
+      ).addTo(map);
+    } else {
+      container.classList.remove('radar-map-clean-blue');
+      tileLayerRef.current = L.tileLayer(
+        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        {
+          attribution: '&copy; OpenStreetMap contributors',
+          maxZoom: 19,
+        }
+      ).addTo(map);
+    }
+
+    if (styleBtnRef.current) {
+      styleBtnRef.current.classList.toggle('is-active', mapStyle === 'clean_blue');
+      styleBtnRef.current.setAttribute(
+        'aria-pressed',
+        String(mapStyle === 'clean_blue')
+      );
+      styleBtnRef.current.title =
+        mapStyle === 'clean_blue'
+          ? 'Voltar ao Mapa Padrão'
+          : 'Ativar Mapa Limpo / Noturno Azul';
+    }
+
+    window.requestAnimationFrame(() => {
+      map.invalidateSize({ pan: false, animate: false });
+    });
+  }, [mapStyle, canViewMap]);
+
+  // Recalcula dimensões do mapa ao alternar visibilidade, barra rápida ou estados de marcação
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !isMapVisible) return;
+    const raf = window.requestAnimationFrame(() => {
+      map.invalidateSize({ pan: false, animate: false });
+    });
+    const timer = window.setTimeout(() => {
+      map.invalidateSize({ pan: false, animate: false });
+    }, 120);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
+    };
+  }, [
+    isMapVisible,
+    quickBarOpen,
+    pendingMapPointDraft,
+    sightingTargetOcc,
+    pickerOpen,
+    bellOpen,
+    selectedStoreId,
+    toastMessage,
+    activeLinkedStore?.isOpen,
+    occurrences.length,
+  ]);
 
   // Responde ao botão de centralizar GPS da barra superior
   useEffect(() => {
@@ -1470,10 +1669,10 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
 
   return (
     <div className="relative flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden bg-slate-100">
-      <div className="relative flex-1 min-h-0 flex flex-col">
+      <div className="relative flex-1 min-h-[240px] flex flex-col">
         <div
           ref={mapContainerRef}
-          className={`w-full flex-1 min-h-0 ${
+          className={`w-full flex-1 min-h-[240px] relative z-0 ${
             sightingTargetOcc || pendingMapPointDraft
               ? 'cursor-crosshair'
               : ''
@@ -1584,20 +1783,43 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
           </div>
         )}
 
-        {/* Banner de modo controlado: "Apontar no mapa" (ao criar ocorrência) */}
+        {/* Barra Flutuante de Marcação Direta no Topo do Mapa (logo abaixo da barra superior) */}
         {pendingMapPointDraft && (
-          <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[950] px-4 py-2.5 rounded-2xl bg-slate-900 text-white border border-slate-600 shadow-xl text-xs sm:text-sm font-bold flex items-center gap-2.5 max-w-[92vw]">
-            <MapPin className="w-4 h-4 text-blue-300 shrink-0" />
-            <span>
-              Toque na rua para marcar: {pendingMapPointDraft.subcategory.name}
-            </span>
-            <button
-              type="button"
-              onClick={() => setPendingMapPointDraft(null)}
-              className="min-h-[32px] px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold shrink-0"
-            >
-              Cancelar
-            </button>
+          <div className="absolute top-3 left-3 right-14 z-[960] flex flex-col items-start gap-2 pointer-events-none">
+            <div className="pointer-events-auto w-full sm:w-auto max-w-xl px-3.5 py-2.5 rounded-2xl bg-slate-900/95 backdrop-blur-md text-white border border-slate-700 shadow-2xl flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <MapPin className="w-4 h-4 text-blue-300 shrink-0" />
+                <span className="text-xs sm:text-sm font-extrabold truncate">
+                  Toque na rua: {pendingMapPointDraft.subcategory.name}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  disabled={gpsLoading}
+                  onClick={() => void handleConfirmHereFromDraft()}
+                  className="min-h-[40px] px-3.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-70 text-white text-xs font-extrabold flex items-center gap-1.5 shadow-md active:scale-[0.98] transition-all"
+                >
+                  {gpsLoading ? (
+                    <Navigation className="w-4 h-4 animate-spin shrink-0" />
+                  ) : (
+                    <Crosshair className="w-4 h-4 shrink-0" />
+                  )}
+                  <span>
+                    {gpsLoading ? 'GPS...' : '📍 Onde eu estou'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPendingMapPointDraft(null)}
+                  className="min-h-[40px] px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold shrink-0"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1615,7 +1837,7 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
         )}
 
         {/* Pop-up Persistente dentro do Raio da Loja ("✕ Não vi" / "👁️ Eu vi!") */}
-        {pendingRadiusAlert && !sightingTargetOcc && !pendingMapPointDraft && (
+        {pendingRadiusAlert && !sightingTargetOcc && !pendingMapPointDraft && !quickBarOpen && (
           <div
             role="alertdialog"
             aria-label="Alerta próximo dentro do raio da loja"
@@ -1695,21 +1917,101 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
           </div>
         )}
 
+        {/* Barra de Ação Rápida ao clicar em "Marcar Carro": 3 tipos principais lado a lado + botão "Outros" */}
+        {quickBarOpen && (
+          <div className="shrink-0 w-full bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-8px_28px_rgba(15,23,42,0.14)] z-[910] px-2.5 pt-2.5 pb-2 space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[11px] font-extrabold uppercase tracking-wide text-slate-600">
+                Seleção rápida — Toque no veículo
+              </span>
+              <button
+                type="button"
+                onClick={() => setQuickBarOpen(false)}
+                aria-label="Fechar barra rápida"
+                className="min-h-[30px] px-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-slate-100 flex items-center gap-1"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Fechar</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              {quickPinSubcategories.map((sub) => {
+                const subCategoryObj =
+                  categories.find((c) => c.id === sub.categoryId) ||
+                  primaryCategory ||
+                  categories[0];
+                return (
+                  <button
+                    key={sub.id}
+                    type="button"
+                    disabled={!subCategoryObj}
+                    onClick={() => {
+                      if (!subCategoryObj) return;
+                      setQuickBarOpen(false);
+                      setSightingTargetOcc(null);
+                      setPendingMapPointDraft({
+                        category: subCategoryObj,
+                        subcategory: sub,
+                      });
+                    }}
+                    className="min-h-[68px] p-2 rounded-2xl border-2 border-slate-200 bg-white hover:border-blue-600 hover:bg-blue-50/50 active:scale-[0.97] transition-all flex flex-col items-center justify-center gap-1 text-center shadow-xs"
+                  >
+                    <OccurrenceAvatar
+                      spec={{
+                        visualType: sub.visualType,
+                        vehicleIconKey: sub.vehicleIconKey,
+                        symbolKey: sub.symbolKey,
+                        emoji: sub.emoji,
+                        customImageDataUrl: sub.customImageDataUrl,
+                        colorHex: sub.colorHex,
+                        pulseEffect: sub.pulseEffect,
+                      }}
+                      alt={sub.name}
+                      className="w-9 h-9"
+                    />
+                    <span className="text-[11px] sm:text-xs font-extrabold text-slate-900 leading-tight line-clamp-1">
+                      {sub.name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setQuickBarOpen(false);
+                setPickerOpen(true);
+              }}
+              className="w-full min-h-[44px] px-4 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-900 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors"
+            >
+              <Layers className="w-4 h-4 text-slate-700" />
+              <span>Outros tipos e categorias</span>
+            </button>
+          </div>
+        )}
+
         {/* Dock Inferior Fixo de Canto a Canto (3 Botões Grandes) */}
         <nav
           aria-label="Ações rápidas do mapa"
           className="shrink-0 w-full bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-6px_24px_rgba(15,23,42,0.10)] z-[900] grid grid-cols-3 gap-2 px-2.5 py-2"
         >
-          {/* Botão 1: Categoria Principal */}
+          {/* Botão 1: Categoria Principal (abre Barra Rápida com 3 principais + Outros) */}
           <button
             type="button"
             disabled={!canMark}
+            aria-expanded={quickBarOpen}
             onClick={() => {
               setSightingTargetOcc(null);
               setPendingMapPointDraft(null);
-              setPickerOpen(true);
+              setQuickBarOpen((prev) => !prev);
             }}
-            className="min-h-[52px] px-2.5 rounded-2xl bg-red-600 hover:bg-red-700 disabled:bg-slate-300 disabled:text-slate-600 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-md active:scale-[0.98] transition-all"
+            className={`min-h-[52px] px-2.5 rounded-2xl disabled:bg-slate-300 disabled:text-slate-600 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-md active:scale-[0.98] transition-all ${
+              quickBarOpen
+                ? 'bg-red-800 ring-2 ring-red-300'
+                : 'bg-red-600 hover:bg-red-700'
+            }`}
           >
             <Plus className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
             <span className="truncate">{primaryButtonLabel}</span>
@@ -1791,7 +2093,7 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
         </div>
       )}
 
-      {/* Modal Botão 1: Categoria Principal -> Subcategorias -> GPS ou Apontar no mapa */}
+      {/* Modal Botão "Outros": seleção de demais tipos e categorias direto para o mapa */}
       <OccurrencePickerModal
         isOpen={pickerOpen}
         primaryCategory={primaryCategory}
@@ -1799,10 +2101,9 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
         subcategories={subcategories}
         activeOccurrences={activePhaseOccurrences}
         alertAudit={alertAudit}
-        gpsLoading={gpsLoading}
-        onConfirmHere={handleConfirmOccurrenceHere}
-        onChoosePointOnMap={(category, subcategory, tag) => {
+        onSelectSubcategory={(category, subcategory, tag) => {
           setPickerOpen(false);
+          setSightingTargetOcc(null);
           setPendingMapPointDraft({ category, subcategory, tag });
         }}
         onClose={() => setPickerOpen(false)}

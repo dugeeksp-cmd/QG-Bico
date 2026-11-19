@@ -607,18 +607,29 @@ function createSeedSubcategories(): CatalogSubcategory[] {
     },
   ];
 
+  const quickOrderMap: Partial<Record<VehicleIconKey, number>> = {
+    pm: 1,
+    policia_civil: 2,
+    gcm: 3,
+  };
+
   const vehicleSubs: CatalogSubcategory[] = VEHICLE_ICON_OPTIONS.map(
-    (opt, idx) => ({
-      id: `sub-veh-${opt.key}`,
-      categoryId: 'cat-carro',
-      name: opt.label,
-      visualType: 'vehicle_svg',
-      vehicleIconKey: opt.key,
-      colorHex: getVehicleColor(opt.key),
-      pulseEffect: false,
-      createdAt: now + 10 + idx,
-      updatedAt: now + 10 + idx,
-    })
+    (opt, idx) => {
+      const quickOrder = quickOrderMap[opt.key];
+      return {
+        id: `sub-veh-${opt.key}`,
+        categoryId: 'cat-carro',
+        name: opt.label,
+        visualType: 'vehicle_svg',
+        vehicleIconKey: opt.key,
+        colorHex: getVehicleColor(opt.key),
+        pulseEffect: false,
+        isQuickPin: Boolean(quickOrder),
+        quickPinOrder: quickOrder,
+        createdAt: now + 10 + idx,
+        updatedAt: now + 10 + idx,
+      };
+    }
   );
 
   return [...baseSubs, ...vehicleSubs];
@@ -878,6 +889,26 @@ function getV50QaItems(): QaChecklistItem[] {
   }));
 }
 
+function getV60QaItems(): QaChecklistItem[] {
+  const now = Date.now();
+  const titles = [
+    '[v6.0] Correção crítica do mapa branco ao adicionar veículo (ResizeObserver + invalidateSize + preservação de instância Leaflet)',
+    '[v6.0] Botão de alternância de estilo do mapa abaixo do zoom (+/-) com Modo Limpo / Noturno Azul sem poluição de POIs',
+    '[v6.0] Atalho fixo de acesso rápido ao Mapa no cabeçalho superior ao lado do botão de GPS em todas as telas',
+    '[v6.0] Novo fluxo rápido de Marcar Carro (3 tipos principais configuráveis no Super Admin + Outros) e marcação direta sem modal intermediário (toque no mapa ou 📍 Onde eu estou)',
+    '[v6.0] Correção do clique do botão flutuante do cadeado em produção com confirmação, limpeza de sessão/tokens e redirecionamento para google.com',
+  ];
+  return titles.map((title, i) => ({
+    id: `qa-v60-${i + 1}`,
+    section: 'features' as const,
+    title,
+    done: true,
+    qaStatus: 'pending' as const,
+    versionTag: '6.0',
+    createdAt: now + 600 + i,
+  }));
+}
+
 function getRequiredRoadmapItems(): QaChecklistItem[] {
   const now = Date.now();
   const titles = [
@@ -922,7 +953,7 @@ function createSeedQaChangelog(): QaChangelogState {
   }));
 
   return {
-    version: '5.0',
+    version: '6.0',
     items: [
       ...v1Features,
       ...getV2QaItems(),
@@ -934,6 +965,7 @@ function createSeedQaChangelog(): QaChangelogState {
       ...getV44QaItems(),
       ...getV45QaItems(),
       ...getV50QaItems(),
+      ...getV60QaItems(),
       ...getRequiredRoadmapItems(),
     ],
     releases: [
@@ -997,13 +1029,20 @@ function createSeedQaChangelog(): QaChangelogState {
         releaseType: 'minor',
         summary:
           'Saída instantânea em 1 toque no cadeado flutuante, Chat & Mensagens global unificado no Drawer e Estoque Atual por Zona de SP com semáforo e vendas do dia',
-        releasedAt: now - 60000,
+        releasedAt: now - 120000,
       },
       {
         version: '5.0',
         releaseType: 'major',
         summary:
           'v5.0 (Major): Início da fase de Conectividade — Pipeline CI/CD via GitHub Actions com deploy FTP automatizado, build estático Vite otimizado e correção de segurança no botão de cadeado (modal de confirmação + redirecionamento externo para Google).',
+        releasedAt: now - 60000,
+      },
+      {
+        version: '6.0',
+        releaseType: 'major',
+        summary:
+          'v6.0 (Correções de Estabilidade do Mapa, Fluxo Rápido de Marcação e Botão de Emergência): Correção do mapa branco com invalidateSize/ResizeObserver, modo Mapa Limpo Azul Noturno, atalho de mapa no cabeçalho, barra rápida com 3 tipos configuráveis no Super Admin + marcação direta sem modal intermediário e correção do botão de cadeado em produção.',
         releasedAt: now,
       },
     ],
@@ -1385,11 +1424,39 @@ class MultiOrgDataService {
           );
         }
       }
-      if (!localStorage.getItem(STORAGE_KEYS.SUBCATEGORIES)) {
+      const rawSubs = localStorage.getItem(STORAGE_KEYS.SUBCATEGORIES);
+      if (!rawSubs) {
         localStorage.setItem(
           STORAGE_KEYS.SUBCATEGORIES,
           JSON.stringify(createSeedSubcategories())
         );
+      } else {
+        const parsedSubs = JSON.parse(rawSubs) as CatalogSubcategory[];
+        if (
+          parsedSubs.length > 0 &&
+          !parsedSubs.some((s) => Boolean(s.isQuickPin))
+        ) {
+          const defaultIds: Record<string, number> = {
+            'sub-veh-pm': 1,
+            'sub-veh-policia_civil': 2,
+            'sub-veh-gcm': 3,
+          };
+          let matchedAny = parsedSubs.some((s) => Boolean(defaultIds[s.id]));
+          const nextSubs = parsedSubs.map((s, idx) => {
+            const ord = defaultIds[s.id];
+            if (ord) {
+              return { ...s, isQuickPin: true, quickPinOrder: ord };
+            }
+            if (!matchedAny && idx < 3) {
+              return { ...s, isQuickPin: true, quickPinOrder: idx + 1 };
+            }
+            return s;
+          });
+          localStorage.setItem(
+            STORAGE_KEYS.SUBCATEGORIES,
+            JSON.stringify(nextSubs)
+          );
+        }
       }
 
       // 4. Ocorrências (migra lastUpdatedAt, trailPoints e dismissedByUserIds v4.0)
@@ -1559,6 +1626,13 @@ class MultiOrgDataService {
           }
         });
 
+        getV60QaItems().forEach((v60Item) => {
+          if (!nextItems.some((item) => item.id === v60Item.id)) {
+            nextItems.push(v60Item);
+            qaChanged = true;
+          }
+        });
+
         getRequiredRoadmapItems().forEach((roadItem) => {
           const normalizedTitle = roadItem.title.toLowerCase();
           const alreadyExists = nextItems.some(
@@ -1595,9 +1669,10 @@ class MultiOrgDataService {
           nextVersion === '4.2-UI' ||
           nextVersion === '4.3-UI' ||
           nextVersion === '4.4-Final' ||
-          nextVersion === '4.5-RC'
+          nextVersion === '4.5-RC' ||
+          nextVersion === '5.0'
         ) {
-          nextVersion = '5.0';
+          nextVersion = '6.0';
           qaChanged = true;
         }
 
@@ -1707,6 +1782,17 @@ class MultiOrgDataService {
             releaseType: 'major',
             summary:
               'v5.0 (Major): Início da fase de Conectividade — Pipeline CI/CD via GitHub Actions com deploy FTP automatizado, build estático Vite otimizado e correção de segurança no botão de cadeado (modal de confirmação + redirecionamento externo para Google).',
+            releasedAt: Date.now() - 60000,
+          });
+          qaChanged = true;
+        }
+
+        if (!nextReleases.some((r) => r.version === '6.0')) {
+          nextReleases.push({
+            version: '6.0',
+            releaseType: 'major',
+            summary:
+              'v6.0 (Correções de Estabilidade do Mapa, Fluxo Rápido de Marcação e Botão de Emergência): Correção do mapa branco com invalidateSize/ResizeObserver, modo Mapa Limpo Azul Noturno, atalho de mapa no cabeçalho, barra rápida com 3 tipos configuráveis no Super Admin + marcação direta sem modal intermediário e correção do botão de cadeado em produção.',
             releasedAt: Date.now(),
           });
           qaChanged = true;
@@ -2118,7 +2204,8 @@ class MultiOrgDataService {
         const lower = key.toLowerCase();
         if (
           lower.includes('session') ||
-          lower.includes('auth_token') ||
+          lower.includes('token') ||
+          lower.includes('auth') ||
           lower.includes('active_user')
         ) {
           keysToRemove.push(key);
@@ -4186,6 +4273,52 @@ class MultiOrgDataService {
     this.writeJson(STORAGE_KEYS.SUBCATEGORIES, next);
     this.emitSubcategories();
     return updated;
+  }
+
+  async toggleQuickPinSubcategory(
+    subcategoryId: string,
+    actorRole: UserRole
+  ): Promise<CatalogSubcategory[]> {
+    if (actorRole !== 'SUPER_ADMIN') {
+      throw new Error(
+        'Apenas o Super Admin pode configurar os 3 tipos principais da barra rápida.'
+      );
+    }
+    const subs = await this.getSubcategories();
+    const target = subs.find((s) => s.id === subcategoryId);
+    if (!target) throw new Error('Subcategoria não encontrada.');
+
+    const isCurrentlyPinned = Boolean(target.isQuickPin);
+    if (!isCurrentlyPinned) {
+      const currentPinnedCount = subs.filter((s) => Boolean(s.isQuickPin)).length;
+      if (currentPinnedCount >= 3) {
+        throw new Error(
+          'Limite máximo de 3 tipos principais na barra rápida atingido. Desmarque um item antes de selecionar outro.'
+        );
+      }
+    }
+
+    const now = Date.now();
+    const next = subs.map((s) => {
+      if (s.id !== subcategoryId) return s;
+      if (isCurrentlyPinned) {
+        return {
+          ...s,
+          isQuickPin: false,
+          quickPinOrder: undefined,
+          updatedAt: now,
+        };
+      }
+      return {
+        ...s,
+        isQuickPin: true,
+        quickPinOrder: now,
+        updatedAt: now,
+      };
+    });
+    this.writeJson(STORAGE_KEYS.SUBCATEGORIES, next);
+    this.emitSubcategories();
+    return next;
   }
 
   async deleteSubcategory(id: string): Promise<void> {
