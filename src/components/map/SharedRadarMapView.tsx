@@ -30,22 +30,22 @@ import {
 } from '../../types/radar';
 import {
   computeCircleBounds,
-  computeProjectionArea,
   formatDistanceLabel,
   getCountdownStatus,
   getDistanceMeters,
   getOccurrencePhase,
 } from '../../utils/geo';
 import { hasPermission, isUserLinkedToStore } from '../../utils/rbac';
-import {
-  getOccurrenceInnerHtml,
-  getOccurrencePinHtml,
-  getStorePinHtml,
-  OccurrenceAvatar,
-} from '../icons/VehicleSvg';
+import { OccurrenceAvatar } from '../icons/VehicleSvg';
 import { OccurrencePickerModal } from './OccurrencePickerModal';
 import { StoreInfoCardModal } from './StoreInfoCardModal';
 import { NearbyAlertItem, NearbyAlertsModal } from './NearbyAlertsModal';
+import {
+  IsolatedLeafletMap,
+  IsolatedMapImperativeHandle,
+  MapAddingStateRefValue,
+  MapVisualStyle,
+} from './IsolatedLeafletMap';
 
 const DEFAULT_SP_CENTER: [number, number] = [-23.5878, -46.7525];
 
@@ -85,123 +85,6 @@ interface SharedRadarMapViewProps {
   onOpenStoreOptions?: (store: StoreUnit) => void;
 }
 
-function escapeHtml(raw: string): string {
-  return raw
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function buildOccurrencePopupHtml(
-  occ: MapOccurrence,
-  isMatchedTarget: boolean,
-  canComplete: boolean,
-  canSightUpdate: boolean,
-  nowMs: number
-): string {
-  const lastUpdated = occ.lastUpdatedAt || occ.createdAt;
-  const phaseInfo = getOccurrencePhase(lastUpdated, nowMs);
-  const countdown = getCountdownStatus(
-    lastUpdated,
-    occ.expiresAt,
-    occ.durationMinutes,
-    nowMs
-  );
-  const mediaHtml = getOccurrenceInnerHtml({
-    visualType: occ.visualType,
-    vehicleIconKey: occ.vehicleIconKey,
-    symbolKey: occ.symbolKey,
-    emoji: occ.emoji,
-    customImageDataUrl: occ.customImageDataUrl,
-    colorHex: occ.colorHex,
-    pulseEffect: occ.pulseEffect,
-  });
-
-  const tagHtml = occ.tag
-    ? `<div style="margin-top:4px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:800;color:#0F172A;letter-spacing:0.03em;">
-         ID: ${escapeHtml(occ.tag)}
-       </div>`
-    : '';
-
-  const matchedHtml = isMatchedTarget
-    ? `<div style="margin-top:8px;padding:6px 9px;border-radius:8px;background:#FFFBEB;border:1px solid #FCD34D;color:#92400E;font-size:11px;font-weight:800;">
-         Mesmo veículo/alvo identificado
-       </div>`
-    : '';
-
-  let phaseBannerHtml = '';
-  if (phaseInfo.phase === 'active') {
-    const timerColor = countdown.isUrgent ? '#B91C1C' : '#1D4ED8';
-    const timerBg = countdown.isUrgent ? '#FEF2F2' : '#EFF6FF';
-    const timerBorder = countdown.isUrgent ? '#FECACA' : '#BFDBFE';
-    phaseBannerHtml = `
-      <div style="margin-top:10px;padding:8px 10px;border-radius:10px;background:${timerBg};border:1px solid ${timerBorder};color:${timerColor};display:flex;align-items:center;justify-content:space-between;gap:8px;">
-        <span style="font-size:11px;font-weight:700;">Atualizado ${escapeHtml(
-          phaseInfo.elapsedLabel
-        )}</span>
-        <span data-countdown-box="${occ.id}" style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-weight:800;font-size:14px;">${countdown.formatted}</span>
-      </div>
-    `;
-  } else if (phaseInfo.phase === 'shadow') {
-    phaseBannerHtml = `
-      <div style="margin-top:10px;padding:8px 10px;border-radius:10px;background:#F1F5F9;border:1px solid #CBD5E1;color:#334155;font-size:12px;font-weight:700;">
-        Há ${phaseInfo.elapsedMinutes} min atrás este veículo estava aqui
-      </div>
-    `;
-  } else {
-    phaseBannerHtml = `
-      <div style="margin-top:10px;padding:8px 10px;border-radius:10px;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;font-size:12px;font-weight:700;">
-        Projeção de área provável (mais de 30 min sem atualização)
-      </div>
-    `;
-  }
-
-  const sightButtonHtml = canSightUpdate
-    ? `<button
-        type="button"
-        data-sight-occurrence="${occ.id}"
-        style="margin-top:10px;width:100%;min-height:42px;padding:0 10px;border-radius:10px;border:none;background:#1D4ED8;color:#FFFFFF;font-size:12px;font-weight:800;cursor:pointer;"
-      >
-        👁️ Eu vi! Atualizar ponto na rua
-      </button>`
-    : '';
-
-  const completeButtonHtml = canComplete
-    ? `<button
-        type="button"
-        data-complete-occurrence="${occ.id}"
-        style="margin-top:8px;width:100%;min-height:40px;padding:0 10px;border-radius:10px;border:1px solid #FECACA;background:#DC2626;color:#FFFFFF;font-size:12px;font-weight:700;cursor:pointer;"
-      >
-        Confirmar Conclusão / Excluir Alerta
-      </button>`
-    : '';
-
-  return `
-    <div style="padding:14px;min-width:244px;max-width:290px;font-family:'DM Sans',system-ui,sans-serif;">
-      <div style="display:flex;align-items:center;gap:12px;">
-        <div style="width:52px;height:52px;border-radius:12px;background:#f8fafc;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;padding:6px;flex-shrink:0;overflow:hidden;">
-          ${mediaHtml}
-        </div>
-        <div style="min-width:0;flex:1;">
-          <div style="font-family:'Plus Jakarta Sans',system-ui,sans-serif;font-weight:800;font-size:15px;line-height:1.25;color:#0F172A;word-break:break-word;">
-            ${escapeHtml(occ.subcategoryName)}
-          </div>
-          <div style="font-size:11px;color:#64748B;font-weight:600;margin-top:2px;">
-            ${escapeHtml(occ.categoryName)} · ${escapeHtml(phaseInfo.elapsedLabel)}
-          </div>
-          ${tagHtml}
-        </div>
-      </div>
-
-      ${matchedHtml}
-      ${phaseBannerHtml}
-      ${sightButtonHtml}
-      ${completeButtonHtml}
-    </div>
-  `;
-}
-
 export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
   isMapVisible = true,
   currentUser,
@@ -232,34 +115,33 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
   const canComplete = hasPermission(currentUser, 'canCompleteOccurrences');
   const canOpenClose = hasPermission(currentUser, 'canOpenCloseStore');
 
-  const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapInstanceRef = useRef<L.Map | null>(null);
-  const defaultTileLayerRef = useRef<L.TileLayer | null>(null);
-  const cleanBlueTileLayerRef = useRef<L.TileLayer | null>(null);
-  const activeStyleRef = useRef<'default' | 'clean_blue'>('default');
-  const lastContainerSizeRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
+  const mapApiRef = useRef<IsolatedMapImperativeHandle | null>(null);
   const wasMapVisibleRef = useRef<boolean>(isMapVisible);
-  const styleBtnRef = useRef<HTMLButtonElement | null>(null);
+  const hasMountedMarkingRef = useRef(false);
   const stylePopoverRef = useRef<HTMLDivElement | null>(null);
-  const storesLayerRef = useRef<L.LayerGroup | null>(null);
-  const occurrencesLayerRef = useRef<L.LayerGroup | null>(null);
-  const occurrenceRefsById = useRef<Map<string, L.Marker>>(new Map());
-  const storeRefsById = useRef<Map<string, L.Marker>>(new Map());
-  const userGpsLayerRef = useRef<L.LayerGroup | null>(null);
   const occurrencesRef = useRef<MapOccurrence[]>(occurrences);
-  const openPopupOccIdRef = useRef<string | null>(null);
   const lastGpsCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
-  const tapTimerRef = useRef<number | null>(null);
+
+  // Congela referência inicial do centro e lojas para não invalidar React.memo do mapa
+  const initialCenterRef = useRef<[number, number]>(
+    activeLinkedStore
+      ? [activeLinkedStore.lat, activeLinkedStore.lng]
+      : stores[0]
+      ? [stores[0].lat, stores[0].lng]
+      : DEFAULT_SP_CENTER
+  );
+  const initialStoresBoundsRef = useRef<StoreUnit[]>(stores);
+  const initialLinkedStoreRef = useRef<StoreUnit | null>(activeLinkedStore);
 
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const [mapStyle, setMapStyle] = useState<'default' | 'clean_blue'>('default');
+  const [mapStyle, setMapStyle] = useState<MapVisualStyle>('standard');
   const [styleMenuOpen, setStyleMenuOpen] = useState(false);
   const [quickBarOpen, setQuickBarOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [bellOpen, setBellOpen] = useState(false);
   const [showLastHour, setShowLastHour] = useState(false);
 
-  // Modo direto no mapa: usuário escolheu um tipo na barra rápida ou em "Outros"
+  // Estado de marcação espelhado imediatamente em addingStateRef (evita re-renderizar o mapa)
   const [pendingMapPointDraft, setPendingMapPointDraft] = useState<{
     category: CatalogCategory;
     subcategory: CatalogSubcategory;
@@ -288,6 +170,13 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
   const sightingTargetOccRef = useRef(sightingTargetOcc);
   sightingTargetOccRef.current = sightingTargetOcc;
 
+  const addingStateRef = useRef<MapAddingStateRefValue>({
+    isAddingVehicle: false,
+    hasSightingTarget: false,
+  });
+  addingStateRef.current.isAddingVehicle = Boolean(pendingMapPointDraft);
+  addingStateRef.current.hasSightingTarget = Boolean(sightingTargetOcc);
+
   occurrencesRef.current = occurrences;
 
   useEffect(() => {
@@ -307,7 +196,7 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
     const handleOutsideClick = (e: MouseEvent) => {
       const target = e.target as Node;
       if (stylePopoverRef.current?.contains(target)) return;
-      if (styleBtnRef.current?.contains(target)) return;
+      if (mapApiRef.current?.getStyleButtonEl()?.contains(target)) return;
       setStyleMenuOpen(false);
     };
     document.addEventListener('mousedown', handleOutsideClick);
@@ -369,15 +258,19 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
     return result.slice(0, 3);
   }, [subcategories, primaryCategory]);
 
+  // Janela discreta de 10s evita que o React.memo do mapa re-renderize a cada segundo
+  const phaseBucket = Math.floor(nowMs / 10000);
+
   // Classifica ocorrências por fase (Ativo 0-20m, Sombra 20-30m, Projeção 30-60m)
   const phasedOccurrences = useMemo(() => {
+    const refNow = phaseBucket * 10000;
     return occurrences
       .map((occ) => ({
         occ,
-        phaseInfo: getOccurrencePhase(occ.lastUpdatedAt || occ.createdAt, nowMs),
+        phaseInfo: getOccurrencePhase(occ.lastUpdatedAt || occ.createdAt, refNow),
       }))
       .filter((item) => item.phaseInfo.phase !== 'expired');
-  }, [occurrences, nowMs]);
+  }, [occurrences, phaseBucket]);
 
   const activePhaseOccurrences = useMemo(
     () =>
@@ -448,26 +341,26 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
 
   // Atualiza cronômetro regressivo dentro do popup aberto em tempo real
   useEffect(() => {
-    const openId = openPopupOccIdRef.current;
-    if (!openId) return;
-    const occ = occurrencesRef.current.find((o) => o.id === openId);
-    if (!occ) return;
-    const el = document.querySelector(
-      `[data-countdown-box="${openId}"]`
-    ) as HTMLElement | null;
-    if (!el) return;
-    const countdown = getCountdownStatus(
-      occ.lastUpdatedAt || occ.createdAt,
-      occ.expiresAt,
-      occ.durationMinutes,
-      nowMs
-    );
-    el.textContent = countdown.formatted;
+    const boxes = document.querySelectorAll<HTMLElement>('[data-countdown-box]');
+    if (boxes.length === 0) return;
+    boxes.forEach((el) => {
+      const occId = el.getAttribute('data-countdown-box');
+      if (!occId) return;
+      const occ = occurrencesRef.current.find((o) => o.id === occId);
+      if (!occ) return;
+      const countdown = getCountdownStatus(
+        occ.lastUpdatedAt || occ.createdAt,
+        occ.expiresAt,
+        occ.durationMinutes,
+        nowMs
+      );
+      el.textContent = countdown.formatted;
+    });
   }, [nowMs]);
 
   const drawGpsMarker = useCallback(
     (lat: number, lng: number, accuracy: number) => {
-      const gpsLayer = userGpsLayerRef.current;
+      const gpsLayer = mapApiRef.current?.gpsLayer;
       if (!gpsLayer) return;
       gpsLayer.clearLayers();
       L.circle([lat, lng], {
@@ -512,7 +405,7 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
           setGpsLoading(false);
           const { latitude, longitude, accuracy } = pos.coords;
           lastGpsCoordsRef.current = { lat: latitude, lng: longitude };
-          const map = mapInstanceRef.current;
+          const map = mapApiRef.current?.map;
           if (!map) return;
 
           drawGpsMarker(latitude, longitude, accuracy);
@@ -618,7 +511,7 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
           lastGpsCoordsRef.current.lng
         );
       } else {
-        const map = mapInstanceRef.current;
+        const map = mapApiRef.current?.map;
         const c = map ? map.getCenter() : L.latLng(DEFAULT_SP_CENTER);
         await submitAtCoords(c.lat, c.lng);
       }
@@ -632,7 +525,7 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
         const { latitude, longitude, accuracy } = pos.coords;
         lastGpsCoordsRef.current = { lat: latitude, lng: longitude };
         drawGpsMarker(latitude, longitude, accuracy);
-        mapInstanceRef.current?.setView([latitude, longitude], 16, {
+        mapApiRef.current?.map.setView([latitude, longitude], 16, {
           animate: true,
         });
         await submitAtCoords(latitude, longitude);
@@ -659,13 +552,78 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
     );
   };
 
-  // Refs de callbacks para os event listeners do Leaflet (evita re-instanciar o mapa)
-  const onAddOccurrenceRef = useRef(onAddOccurrence);
-  onAddOccurrenceRef.current = onAddOccurrence;
-  const onUpdateSightingRef = useRef(onUpdateOccurrenceSighting);
-  onUpdateSightingRef.current = onUpdateOccurrenceSighting;
-  const notifyAfterCreateRef = useRef(notifyAfterCreate);
-  notifyAfterCreateRef.current = notifyAfterCreate;
+  // Callbacks estáveis via useRef para o componente React.memo do mapa nunca re-renderizar ao marcar veículos
+  const onMapAddClickRef = useRef<(lat: number, lng: number) => void>(() => {});
+  onMapAddClickRef.current = (lat: number, lng: number) => {
+    const draft = pendingMapPointDraftRef.current;
+    if (!draft) return;
+    setPendingMapPointDraft(null);
+    void onAddOccurrence(
+      draft.category,
+      draft.subcategory,
+      lat,
+      lng,
+      draft.tag
+    ).then((created) => {
+      notifyAfterCreate(created, draft.subcategory, lat, lng);
+    });
+  };
+
+  const onSightingClickRef = useRef<(lat: number, lng: number) => void>(
+    () => {}
+  );
+  onSightingClickRef.current = (lat: number, lng: number) => {
+    const sightingTarget = sightingTargetOccRef.current;
+    if (!sightingTarget) return;
+    setSightingTargetOcc(null);
+    void onUpdateOccurrenceSighting(sightingTarget.id, lat, lng).then(
+      (updated) => {
+        setToastMessage({
+          text: `${updated.subcategoryName} atualizado na rua! Rastro traçado e cronômetro reiniciado (20 min).`,
+          tone: 'info',
+        });
+      }
+    );
+  };
+
+  const onSelectStoreRef = useRef<(storeId: string) => void>((storeId) => {
+    setSelectedStoreId(storeId);
+  });
+  onSelectStoreRef.current = (storeId: string) => {
+    setSelectedStoreId(storeId);
+  };
+
+  const onStartSightingFromPopupRef = useRef<(occ: MapOccurrence) => void>(
+    () => {}
+  );
+  onStartSightingFromPopupRef.current = (occ: MapOccurrence) => {
+    setSightingTargetOcc(occ);
+  };
+
+  const onDeleteOccurrenceRef = useRef<(id: string) => Promise<void>>(
+    onDeleteOccurrence
+  );
+  onDeleteOccurrenceRef.current = onDeleteOccurrence;
+
+  const onToggleStyleMenuRef = useRef<() => void>(() => {});
+  onToggleStyleMenuRef.current = () => {
+    setStyleMenuOpen((prev) => !prev);
+  };
+
+  const onGpsLocatedRef = useRef<
+    (lat: number, lng: number, accuracy: number) => void
+  >(() => {});
+  onGpsLocatedRef.current = (lat: number, lng: number, accuracy: number) => {
+    lastGpsCoordsRef.current = { lat, lng };
+    drawGpsMarker(lat, lng, accuracy);
+  };
+
+  const onMapReadyRef = useRef<
+    (handle: IsolatedMapImperativeHandle | null) => void
+  >(() => {});
+  onMapReadyRef.current = (handle) => {
+    mapApiRef.current = handle;
+  };
 
   // Identifica tags com correspondência (mesmo veículo/alvo ativo ou recente nas últimas 24h)
   const matchedTagsSet = useMemo(() => {
@@ -734,307 +692,43 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
     [stores, selectedStoreId]
   );
 
-  // Inicialização do Mapa OpenStreetMap + Gestos v4.0 (1 toque zoomIn, 2 toques zoomOut, zero abertura acidental)
+  const isCrosshairMode = Boolean(pendingMapPointDraft || sightingTargetOcc);
+
+  // Atualiza cursor sem tocar na prop className do container Leaflet (preserva .leaflet-container!)
   useEffect(() => {
-    if (!canViewMap || !mapContainerRef.current || mapInstanceRef.current) {
+    const map = mapApiRef.current?.map;
+    if (!map) return;
+    map.getContainer().style.cursor = isCrosshairMode ? 'crosshair' : '';
+  }, [isCrosshairMode]);
+
+  // Garantia extra após ativar/desativar o modo de marcação
+  useEffect(() => {
+    if (!hasMountedMarkingRef.current) {
+      hasMountedMarkingRef.current = true;
       return;
     }
-
-    const initialCenter: [number, number] = activeLinkedStore
-      ? [activeLinkedStore.lat, activeLinkedStore.lng]
-      : stores[0]
-      ? [stores[0].lat, stores[0].lng]
-      : DEFAULT_SP_CENTER;
-
-    const map = L.map(mapContainerRef.current, {
-      center: initialCenter,
-      zoom: 14,
-      minZoom: 4,
-      maxZoom: 19,
-      zoomControl: false,
-      doubleClickZoom: false, // Desabilitado para usar 2 toques como zoomOut controlado
-    });
-
-    L.control.zoom({ position: 'topright' }).addTo(map);
-
-    // Botão compacto de alternância de camada/tema do mapa logo abaixo do zoom (+/-)
-    const StyleToggleControl = L.Control.extend({
-      options: { position: 'topright' as L.ControlPosition },
-      onAdd: () => {
-        const container = L.DomUtil.create(
-          'div',
-          'leaflet-bar leaflet-control radar-style-control'
-        );
-        const btn = L.DomUtil.create(
-          'button',
-          'radar-style-toggle-btn',
-          container
-        ) as HTMLButtonElement;
-        btn.type = 'button';
-        btn.title = 'Escolher estilo do mapa (Padrão / Escuro Limpo)';
-        btn.setAttribute('aria-label', 'Escolher estilo do mapa');
-        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`;
-        L.DomEvent.disableClickPropagation(container);
-        L.DomEvent.disableScrollPropagation(container);
-        btn.onclick = (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          setStyleMenuOpen((prev) => !prev);
-        };
-        styleBtnRef.current = btn;
-        return container;
-      },
-    });
-    new StyleToggleControl().addTo(map);
-
-    const defaultTiles = L.tileLayer(
-      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      {
-        attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 19,
-      }
-    ).addTo(map);
-    defaultTileLayerRef.current = defaultTiles;
-    activeStyleRef.current = 'default';
-
-    const storesLayer = L.layerGroup().addTo(map);
-    const occurrencesLayer = L.layerGroup().addTo(map);
-    const gpsLayer = L.layerGroup().addTo(map);
-
-    if (stores.length > 1 && !activeLinkedStore) {
-      const groupBounds = L.latLngBounds(
-        stores.map((s) => L.latLng(s.lat, s.lng))
-      ).pad(0.28);
-      map.fitBounds(groupBounds, { padding: [32, 32], maxZoom: 14 });
-    } else if (activeLinkedStore || stores[0]) {
-      const refStore = activeLinkedStore || stores[0];
-      map.fitBounds(
-        computeCircleBounds(refStore.lat, refStore.lng, refStore.radiusKm),
-        { padding: [24, 24], maxZoom: 15 }
-      );
-    }
-
-    // 1 toque = zoomIn (ou ação controlada se em modo "Eu vi!" / marcação direta na rua)
-    map.on('click', (e: L.LeafletMouseEvent) => {
-      const sightingTarget = sightingTargetOccRef.current;
-      if (sightingTarget) {
-        if (tapTimerRef.current) {
-          window.clearTimeout(tapTimerRef.current);
-          tapTimerRef.current = null;
-        }
-        setSightingTargetOcc(null);
-        void onUpdateSightingRef
-          .current(sightingTarget.id, e.latlng.lat, e.latlng.lng)
-          .then((updated) => {
-            setToastMessage({
-              text: `${updated.subcategoryName} atualizado na rua! Rastro traçado e cronômetro reiniciado (20 min).`,
-              tone: 'info',
-            });
-          });
-        return;
-      }
-
-      const draft = pendingMapPointDraftRef.current;
-      if (draft) {
-        if (tapTimerRef.current) {
-          window.clearTimeout(tapTimerRef.current);
-          tapTimerRef.current = null;
-        }
-        setPendingMapPointDraft(null);
-        void onAddOccurrenceRef
-          .current(
-            draft.category,
-            draft.subcategory,
-            e.latlng.lat,
-            e.latlng.lng,
-            draft.tag
-          )
-          .then((created) => {
-            notifyAfterCreateRef.current(
-              created,
-              draft.subcategory,
-              e.latlng.lat,
-              e.latlng.lng
-            );
-          });
-        return;
-      }
-
-      // Navegação segura sem abertura acidental: 1 toque aproxima zoom no ponto tocado
-      if (tapTimerRef.current) {
-        window.clearTimeout(tapTimerRef.current);
-      }
-      const tapLatLng = e.latlng;
-      tapTimerRef.current = window.setTimeout(() => {
-        tapTimerRef.current = null;
-        const nextZoom = Math.min(map.getMaxZoom(), map.getZoom() + 1);
-        map.setZoomAround(tapLatLng, nextZoom, { animate: true });
-      }, 240);
-    });
-
-    // 2 toques = zoomOut no ponto tocado
-    map.on('dblclick', (e: L.LeafletMouseEvent) => {
-      if (tapTimerRef.current) {
-        window.clearTimeout(tapTimerRef.current);
-        tapTimerRef.current = null;
-      }
-      if (sightingTargetOccRef.current || pendingMapPointDraftRef.current) {
-        return;
-      }
-      const nextZoom = Math.max(map.getMinZoom(), map.getZoom() - 1);
-      map.setZoomAround(e.latlng, nextZoom, { animate: true });
-    });
-
-    map.on('popupclose', () => {
-      openPopupOccIdRef.current = null;
-    });
-
-    mapInstanceRef.current = map;
-    storesLayerRef.current = storesLayer;
-    occurrencesLayerRef.current = occurrencesLayer;
-    userGpsLayerRef.current = gpsLayer;
-
-    // Garante recálculo apenas quando a dimensão real do container mudar (nunca ao marcar pinos)
-    const invalidateIfSizeChanged = () => {
-      const el = mapContainerRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const w = Math.round(rect.width);
-      const h = Math.round(rect.height);
-      if (w <= 0 || h <= 0) return;
-      if (
-        Math.abs(w - lastContainerSizeRef.current.w) > 1 ||
-        Math.abs(h - lastContainerSizeRef.current.h) > 1
-      ) {
-        lastContainerSizeRef.current = { w, h };
-        map.invalidateSize({ pan: false, animate: false });
-      }
-    };
-
-    invalidateIfSizeChanged();
-    window.addEventListener('resize', invalidateIfSizeChanged);
-    window.visualViewport?.addEventListener('resize', invalidateIfSizeChanged);
-
-    let resizeObserver: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== 'undefined' && mapContainerRef.current) {
-      resizeObserver = new ResizeObserver(() => {
-        window.requestAnimationFrame(invalidateIfSizeChanged);
-      });
-      resizeObserver.observe(mapContainerRef.current);
-    }
-
-    // Auto-centraliza via GPS ao abrir o mapa
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          if (!mapInstanceRef.current) return;
-          const { latitude, longitude, accuracy } = pos.coords;
-          lastGpsCoordsRef.current = { lat: latitude, lng: longitude };
-          drawGpsMarker(latitude, longitude, accuracy);
-          mapInstanceRef.current.setView([latitude, longitude], 15, {
-            animate: true,
-          });
-        },
-        () => {
-          // Mantém centro padrão sem erro invasivo
-        },
-        { enableHighAccuracy: true, timeout: 7000, maximumAge: 15000 }
-      );
-    }
-
-    return () => {
-      window.removeEventListener('resize', invalidateIfSizeChanged);
-      window.visualViewport?.removeEventListener(
-        'resize',
-        invalidateIfSizeChanged
-      );
-      resizeObserver?.disconnect();
-      if (tapTimerRef.current) {
-        window.clearTimeout(tapTimerRef.current);
-        tapTimerRef.current = null;
-      }
-      map.remove();
-      mapInstanceRef.current = null;
-      defaultTileLayerRef.current = null;
-      cleanBlueTileLayerRef.current = null;
-      activeStyleRef.current = 'default';
-      lastContainerSizeRef.current = { w: 0, h: 0 };
-      styleBtnRef.current = null;
-      storesLayerRef.current = null;
-      occurrencesLayerRef.current = null;
-      userGpsLayerRef.current = null;
-    };
-  }, [canViewMap]);
-
-  // Alterna camada de tiles entre Padrão (OSM) e Escuro Limpo (CARTO Basemaps sem API Key) somente quando o usuário muda o estilo
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map || mapStyle === activeStyleRef.current) return;
-
-    const container = map.getContainer();
-    if (mapStyle === 'clean_blue') {
-      if (defaultTileLayerRef.current && map.hasLayer(defaultTileLayerRef.current)) {
-        map.removeLayer(defaultTileLayerRef.current);
-      }
-      if (!cleanBlueTileLayerRef.current) {
-        cleanBlueTileLayerRef.current = L.tileLayer(
-          'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-          {
-            attribution: '&copy; OpenStreetMap &copy; CARTO',
-            subdomains: 'abcd',
-            maxZoom: 19,
-          }
-        );
-      }
-      cleanBlueTileLayerRef.current.addTo(map);
-      container.classList.add('radar-map-clean-blue');
-    } else {
-      if (cleanBlueTileLayerRef.current && map.hasLayer(cleanBlueTileLayerRef.current)) {
-        map.removeLayer(cleanBlueTileLayerRef.current);
-      }
-      if (!defaultTileLayerRef.current) {
-        defaultTileLayerRef.current = L.tileLayer(
-          'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-          {
-            attribution: '&copy; OpenStreetMap contributors',
-            maxZoom: 19,
-          }
-        );
-      }
-      defaultTileLayerRef.current.addTo(map);
-      container.classList.remove('radar-map-clean-blue');
-    }
-
-    activeStyleRef.current = mapStyle;
-  }, [mapStyle, canViewMap]);
+    const timer = window.setTimeout(() => {
+      mapApiRef.current?.map.invalidateSize({ pan: false, animate: false });
+    }, 100);
+    return () => window.clearTimeout(timer);
+  }, [isCrosshairMode]);
 
   // Atualiza estado visual do botão de camadas
   useEffect(() => {
-    if (!styleBtnRef.current) return;
-    styleBtnRef.current.classList.toggle(
-      'is-active',
-      mapStyle === 'clean_blue' || styleMenuOpen
-    );
-    styleBtnRef.current.setAttribute('aria-expanded', String(styleMenuOpen));
+    const btn = mapApiRef.current?.getStyleButtonEl();
+    if (!btn) return;
+    btn.classList.toggle('is-active', mapStyle === 'dark' || styleMenuOpen);
+    btn.setAttribute('aria-expanded', String(styleMenuOpen));
   }, [mapStyle, styleMenuOpen]);
 
   // Recalcula dimensões SOMENTE quando a aba do mapa volta a ficar visível após ter estado oculta
   useEffect(() => {
     const prevVisible = wasMapVisibleRef.current;
     wasMapVisibleRef.current = isMapVisible;
-    const map = mapInstanceRef.current;
+    const map = mapApiRef.current?.map;
     if (!map || !isMapVisible || prevVisible) return;
     const raf = window.requestAnimationFrame(() => {
-      const el = mapContainerRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        lastContainerSizeRef.current = {
-          w: Math.round(rect.width),
-          h: Math.round(rect.height),
-        };
-        map.invalidateSize({ pan: false, animate: false });
-      }
+      map.invalidateSize({ pan: false, animate: false });
     });
     return () => window.cancelAnimationFrame(raf);
   }, [isMapVisible]);
@@ -1046,328 +740,10 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
     }
   }, [centerGpsSignal, canViewMap, handleLocateMe]);
 
-  // Renderiza Lojas Fixas + Círculos de Perímetro
-  useEffect(() => {
-    const layer = storesLayerRef.current;
-    if (!layer) return;
-
-    layer.clearLayers();
-    storeRefsById.current.clear();
-
-    stores.forEach((store) => {
-      const insideList = storeAlertMap.get(store.id) || [];
-      const isAlerting = insideList.length > 0;
-      const isOpen = store.isOpen;
-
-      const circleColor = isAlerting
-        ? '#DC2626'
-        : isOpen
-        ? '#059669'
-        : '#64748B';
-      const circleFill = isAlerting
-        ? '#EF4444'
-        : isOpen
-        ? '#10B981'
-        : '#94A3B8';
-
-      L.circle([store.lat, store.lng], {
-        radius: store.radiusKm * 1000,
-        color: circleColor,
-        weight: isAlerting ? 3 : isOpen ? 2.2 : 1.5,
-        dashArray: isAlerting ? '8 6' : isOpen ? '7 7' : '5 7',
-        fillColor: circleFill,
-        fillOpacity: isAlerting ? 0.16 : isOpen ? 0.09 : 0.04,
-        className: isAlerting ? 'radar-circle-alert' : '',
-        interactive: false,
-      }).addTo(layer);
-
-      const storeIcon = L.divIcon({
-        className: 'radar-store-pin',
-        html: getStorePinHtml(isAlerting, insideList.length, isOpen),
-        iconSize: [44, 48],
-        iconAnchor: [22, 46],
-        popupAnchor: [0, -44],
-      });
-
-      const marker = L.marker([store.lat, store.lng], {
-        icon: storeIcon,
-        zIndexOffset: 300,
-      });
-
-      marker.on('click', () => {
-        setSelectedStoreId(store.id);
-      });
-
-      marker.addTo(layer);
-      storeRefsById.current.set(store.id, marker);
-    });
-  }, [stores, storeAlertMap]);
-
-  // Renderiza Ocorrências em 3 Fases + Rastro Pontilhado + Projeção de Área
-  useEffect(() => {
-    const layer = occurrencesLayerRef.current;
-    if (!layer) return;
-
-    const previouslyOpenId = openPopupOccIdRef.current;
-    layer.clearLayers();
-    occurrenceRefsById.current.clear();
-
-    // 1. Conexões por mesma tag ativa
-    const activeByTag = new Map<string, MapOccurrence[]>();
-    visiblePhasedOccurrences.forEach(({ occ, phaseInfo }) => {
-      if (phaseInfo.phase !== 'active') return;
-      const norm = occ.tag?.trim().toUpperCase();
-      if (!norm) return;
-      const group = activeByTag.get(norm) || [];
-      group.push(occ);
-      activeByTag.set(norm, group);
-    });
-
-    activeByTag.forEach((group) => {
-      if (group.length < 2) return;
-      const sorted = [...group].sort((a, b) => a.createdAt - b.createdAt);
-      L.polyline(
-        sorted.map((o) => [o.lat, o.lng] as [number, number]),
-        {
-          color: '#D97706',
-          weight: 2.5,
-          dashArray: '6 6',
-          opacity: 0.75,
-          interactive: false,
-        }
-      ).addTo(layer);
-    });
-
-    // 2. Renderiza cada ocorrência de acordo com sua Fase (Ativo / Sombra / Projeção)
-    visiblePhasedOccurrences.forEach(({ occ, phaseInfo }) => {
-      const normTag = occ.tag?.trim().toUpperCase();
-      const isMatchedTarget = Boolean(normTag && matchedTagsSet.has(normTag));
-
-      // Linha pontilhada direcional do rastro ("Eu vi!")
-      if (occ.trailPoints && occ.trailPoints.length >= 2) {
-        L.polyline(
-          occ.trailPoints.map((pt) => [pt.lat, pt.lng] as [number, number]),
-          {
-            color: phaseInfo.phase === 'active' ? '#1D4ED8' : '#64748B',
-            weight: 3.5,
-            dashArray: '6 7',
-            opacity: phaseInfo.phase === 'active' ? 0.9 : 0.55,
-            interactive: false,
-          }
-        ).addTo(layer);
-
-        // Pontos anteriores do rastro como pequenos marcadores discretos
-        occ.trailPoints.slice(0, -1).forEach((pt) => {
-          L.circleMarker([pt.lat, pt.lng], {
-            radius: 4.5,
-            color: '#FFFFFF',
-            weight: 2,
-            fillColor: phaseInfo.phase === 'active' ? '#1D4ED8' : '#64748B',
-            fillOpacity: 0.8,
-            interactive: false,
-          }).addTo(layer);
-        });
-      }
-
-      if (phaseInfo.phase === 'projection') {
-        // Fase 3 (30–60 min): Círculo tracejado suave de projeção + selo
-        const proj = computeProjectionArea(
-          occ.lat,
-          occ.lng,
-          occ.trailPoints,
-          phaseInfo.elapsedMinutes
-        );
-
-        L.circle([proj.centerLat, proj.centerLng], {
-          radius: proj.radiusMeters,
-          color: '#D97706',
-          weight: 2,
-          dashArray: '8 8',
-          fillColor: '#F59E0B',
-          fillOpacity: 0.1,
-          interactive: false,
-        }).addTo(layer);
-
-        if (proj.centerLat !== occ.lat || proj.centerLng !== occ.lng) {
-          L.polyline(
-            [
-              [occ.lat, occ.lng],
-              [proj.centerLat, proj.centerLng],
-            ],
-            {
-              color: '#D97706',
-              weight: 2,
-              dashArray: '4 6',
-              opacity: 0.75,
-              interactive: false,
-            }
-          ).addTo(layer);
-        }
-
-        const projIcon = L.divIcon({
-          className: 'radar-vehicle-pin',
-          html: getOccurrencePinHtml(
-            {
-              visualType: occ.visualType,
-              vehicleIconKey: occ.vehicleIconKey,
-              symbolKey: occ.symbolKey,
-              emoji: occ.emoji,
-              customImageDataUrl: occ.customImageDataUrl,
-              colorHex: occ.colorHex,
-              pulseEffect: false,
-            },
-            true,
-            false,
-            occ.tag,
-            true
-          ),
-          iconSize: [46, 52],
-          iconAnchor: [23, 50],
-          popupAnchor: [0, -48],
-        });
-
-        const projMarker = L.marker([proj.centerLat, proj.centerLng], {
-          icon: projIcon,
-          zIndexOffset: 380,
-        });
-
-        projMarker.bindPopup(
-          () =>
-            buildOccurrencePopupHtml(
-              occ,
-              false,
-              canComplete,
-              canMark,
-              Date.now()
-            ),
-          {
-            closeButton: true,
-            autoPanPadding: [24, 24],
-          }
-        );
-
-        projMarker.on('popupopen', (e) => {
-          openPopupOccIdRef.current = occ.id;
-          const popupEl = e.popup.getElement();
-          if (!popupEl) return;
-          const sightBtn = popupEl.querySelector(
-            `[data-sight-occurrence="${occ.id}"]`
-          ) as HTMLButtonElement | null;
-          if (sightBtn) {
-            sightBtn.onclick = () => {
-              projMarker.closePopup();
-              setSightingTargetOcc(occ);
-            };
-          }
-          const completeBtn = popupEl.querySelector(
-            `[data-complete-occurrence="${occ.id}"]`
-          ) as HTMLButtonElement | null;
-          if (completeBtn) {
-            completeBtn.onclick = () => {
-              void onDeleteOccurrence(occ.id);
-            };
-          }
-        });
-
-        projMarker.addTo(layer);
-        occurrenceRefsById.current.set(occ.id, projMarker);
-        return;
-      }
-
-      // Fase 1 (Ativo 0–20m) ou Fase 2 (Sombra 20–30m)
-      const isShadow = phaseInfo.phase === 'shadow';
-      const icon = L.divIcon({
-        className: 'radar-vehicle-pin',
-        html: getOccurrencePinHtml(
-          {
-            visualType: occ.visualType,
-            vehicleIconKey: occ.vehicleIconKey,
-            symbolKey: occ.symbolKey,
-            emoji: occ.emoji,
-            customImageDataUrl: occ.customImageDataUrl,
-            colorHex: occ.colorHex,
-            pulseEffect: occ.pulseEffect,
-          },
-          isShadow,
-          isMatchedTarget,
-          occ.tag,
-          isShadow
-        ),
-        iconSize: [46, 52],
-        iconAnchor: [23, 50],
-        popupAnchor: [0, -48],
-      });
-
-      const leafletMarker = L.marker([occ.lat, occ.lng], {
-        icon,
-        zIndexOffset: isShadow
-          ? 390
-          : occ.pulseEffect
-          ? 600
-          : isMatchedTarget
-          ? 520
-          : 450,
-      });
-
-      leafletMarker.bindPopup(
-        () =>
-          buildOccurrencePopupHtml(
-            occ,
-            isMatchedTarget,
-            canComplete,
-            canMark,
-            Date.now()
-          ),
-        {
-          closeButton: true,
-          autoPanPadding: [24, 24],
-        }
-      );
-
-      leafletMarker.on('popupopen', (e) => {
-        openPopupOccIdRef.current = occ.id;
-        const popupEl = e.popup.getElement();
-        if (!popupEl) return;
-
-        const sightBtn = popupEl.querySelector(
-          `[data-sight-occurrence="${occ.id}"]`
-        ) as HTMLButtonElement | null;
-        if (sightBtn) {
-          sightBtn.onclick = () => {
-            leafletMarker.closePopup();
-            setSightingTargetOcc(occ);
-          };
-        }
-
-        const completeBtn = popupEl.querySelector(
-          `[data-complete-occurrence="${occ.id}"]`
-        ) as HTMLButtonElement | null;
-        if (completeBtn && canComplete) {
-          completeBtn.onclick = () => {
-            void onDeleteOccurrence(occ.id);
-          };
-        }
-      });
-
-      leafletMarker.addTo(layer);
-      occurrenceRefsById.current.set(occ.id, leafletMarker);
-
-      if (previouslyOpenId === occ.id) {
-        leafletMarker.openPopup();
-      }
-    });
-  }, [
-    visiblePhasedOccurrences,
-    matchedTagsSet,
-    canComplete,
-    canMark,
-    onDeleteOccurrence,
-  ]);
-
   // Foco externo (ex: clicou em "Ver no mapa" no painel administrativo)
   useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
+    const api = mapApiRef.current;
+    if (!api) return;
 
     if (focusOccurrenceId) {
       const targetOcc = occurrences.find((o) => o.id === focusOccurrenceId);
@@ -1379,17 +755,14 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
         if (phase === 'shadow' || phase === 'projection') {
           setShowLastHour(true);
         }
-        const target = occurrenceRefsById.current.get(focusOccurrenceId);
-        map.setView([targetOcc.lat, targetOcc.lng], 16, { animate: true });
-        if (target) {
-          target.openPopup();
-        }
+        api.map.setView([targetOcc.lat, targetOcc.lng], 16, { animate: true });
+        api.openOccurrencePopup(focusOccurrenceId);
         onFocusHandled();
       }
     } else if (focusStoreId) {
       const data = stores.find((s) => s.id === focusStoreId);
       if (data) {
-        map.fitBounds(
+        api.map.fitBounds(
           computeCircleBounds(data.lat, data.lng, data.radiusKm),
           { padding: [28, 28], maxZoom: 15, animate: true }
         );
@@ -1401,7 +774,7 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
 
   const focusStoreOnMap = (store: StoreUnit) => {
     setMobileDrawerOpen(false);
-    const map = mapInstanceRef.current;
+    const map = mapApiRef.current?.map;
     if (map) {
       map.fitBounds(
         computeCircleBounds(store.lat, store.lng, store.radiusKm),
@@ -1420,12 +793,11 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
     if ((phase === 'shadow' || phase === 'projection') && !showLastHour) {
       setShowLastHour(true);
     }
-    const map = mapInstanceRef.current;
-    if (map) {
-      map.setView([occ.lat, occ.lng], 16, { animate: true });
+    const api = mapApiRef.current;
+    if (api) {
+      api.map.setView([occ.lat, occ.lng], 16, { animate: true });
       window.setTimeout(() => {
-        const marker = occurrenceRefsById.current.get(occ.id);
-        marker?.openPopup();
+        api.openOccurrencePopup(occ.id);
       }, 120);
     }
   };
@@ -1690,15 +1062,28 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
 
   return (
     <div className="relative flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden bg-slate-100">
-      <div className="relative flex-1 min-h-[240px] flex flex-col">
-        <div
-          ref={mapContainerRef}
-          className={`w-full flex-1 min-h-[240px] relative z-0 ${
-            sightingTargetOcc || pendingMapPointDraft
-              ? 'cursor-crosshair'
-              : ''
-          }`}
-          aria-label="Mapa compartilhado de unidades e ocorrências"
+      <div className="radar-map-stage relative flex-1 min-h-[240px] overflow-hidden">
+        {/* Mapa Leaflet isolado em React.memo: div#map única com inset:0 e zero re-renderização ao marcar veículo */}
+        <IsolatedLeafletMap
+          mapStyle={mapStyle}
+          initialCenter={initialCenterRef.current}
+          initialStoresForBounds={initialStoresBoundsRef.current}
+          initialLinkedStore={initialLinkedStoreRef.current}
+          stores={stores}
+          storeAlertMap={storeAlertMap}
+          vehicles={visiblePhasedOccurrences}
+          matchedTagsSet={matchedTagsSet}
+          canComplete={canComplete}
+          canMark={canMark}
+          addingStateRef={addingStateRef}
+          onMapAddClickRef={onMapAddClickRef}
+          onSightingClickRef={onSightingClickRef}
+          onSelectStoreRef={onSelectStoreRef}
+          onStartSightingFromPopupRef={onStartSightingFromPopupRef}
+          onDeleteOccurrenceRef={onDeleteOccurrenceRef}
+          onToggleStyleMenuRef={onToggleStyleMenuRef}
+          onGpsLocatedRef={onGpsLocatedRef}
+          onMapReadyRef={onMapReadyRef}
         />
 
         {/* Popover flutuante de seleção de estilo do mapa (Padrão vs. Escuro Limpo) */}
@@ -1715,13 +1100,13 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
             <button
               type="button"
               role="menuitemradio"
-              aria-checked={mapStyle === 'default'}
+              aria-checked={mapStyle === 'standard'}
               onClick={() => {
-                setMapStyle('default');
+                setMapStyle('standard');
                 setStyleMenuOpen(false);
               }}
               className={`w-full min-h-[42px] px-2.5 py-1.5 rounded-xl flex items-center justify-between gap-2 text-left transition-colors ${
-                mapStyle === 'default'
+                mapStyle === 'standard'
                   ? 'bg-blue-50 border border-blue-200 text-blue-900'
                   : 'hover:bg-slate-100 text-slate-800 border border-transparent'
               }`}
@@ -1737,7 +1122,7 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
                   </span>
                 </span>
               </span>
-              {mapStyle === 'default' && (
+              {mapStyle === 'standard' && (
                 <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />
               )}
             </button>
@@ -1745,13 +1130,13 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
             <button
               type="button"
               role="menuitemradio"
-              aria-checked={mapStyle === 'clean_blue'}
+              aria-checked={mapStyle === 'dark'}
               onClick={() => {
-                setMapStyle('clean_blue');
+                setMapStyle('dark');
                 setStyleMenuOpen(false);
               }}
               className={`w-full min-h-[42px] px-2.5 py-1.5 rounded-xl flex items-center justify-between gap-2 text-left transition-colors ${
-                mapStyle === 'clean_blue'
+                mapStyle === 'dark'
                   ? 'bg-slate-900 border border-blue-500 text-white'
                   : 'hover:bg-slate-100 text-slate-800 border border-transparent'
               }`}
@@ -1764,16 +1149,14 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
                   </span>
                   <span
                     className={`block text-[10px] leading-tight ${
-                      mapStyle === 'clean_blue'
-                        ? 'text-blue-200'
-                        : 'text-slate-500'
+                      mapStyle === 'dark' ? 'text-blue-200' : 'text-slate-500'
                     }`}
                   >
                     Noturno azul sem POIs
                   </span>
                 </span>
               </span>
-              {mapStyle === 'clean_blue' && (
+              {mapStyle === 'dark' && (
                 <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
               )}
             </button>
@@ -1995,7 +1378,7 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  const map = mapInstanceRef.current;
+                  const map = mapApiRef.current?.map;
                   if (map) {
                     map.setView(
                       [
@@ -2092,10 +1475,10 @@ export const SharedRadarMapView: React.FC<SharedRadarMapViewProps> = ({
           </div>
         )}
 
-        {/* Dock Inferior Fixo de Canto a Canto (3 Botões Grandes) */}
+        {/* Dock Inferior Fixo Flutuante de Canto a Canto (3 Botões Grandes, não altera tamanho do mapa) */}
         <nav
           aria-label="Ações rápidas do mapa"
-          className="shrink-0 w-full bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-6px_24px_rgba(15,23,42,0.10)] z-[900] grid grid-cols-3 gap-2 px-2.5 py-2"
+          className="absolute bottom-0 left-0 right-0 w-full bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-6px_24px_rgba(15,23,42,0.10)] z-[900] grid grid-cols-3 gap-2 px-2.5 py-2"
         >
           {/* Botão 1: Categoria Principal (abre Barra Rápida com 3 principais + Outros) */}
           <button

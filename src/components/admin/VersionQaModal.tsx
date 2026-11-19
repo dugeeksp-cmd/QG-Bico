@@ -28,7 +28,7 @@ interface VersionQaModalProps {
   onClose: () => void;
 }
 
-type VersionFilterKey = 'all' | '6.1.0' | '7.0' | '6.0' | 'legacy';
+type VersionFilterKey = 'all' | '6.1.1' | '6.1.0' | '7.0' | '6.0' | 'legacy';
 
 const SECTION_META: {
   key: QaSectionKey;
@@ -57,6 +57,7 @@ const SECTION_META: {
 
 function getVersionCategory(tag?: string): VersionFilterKey {
   const clean = (tag || '').trim();
+  if (clean.startsWith('6.1.1')) return '6.1.1';
   if (clean.startsWith('6.1')) return '6.1.0';
   if (clean.startsWith('7.')) return '7.0';
   if (clean.startsWith('6.0') || clean === '6') return '6.0';
@@ -348,7 +349,8 @@ export const VersionQaModal: React.FC<VersionQaModalProps> = ({
 
   const filterOptions: { key: VersionFilterKey; label: string }[] = [
     { key: 'all', label: `Todas (${draft.items.length})` },
-    { key: '6.1.0', label: 'v6.1.0 (Atual)' },
+    { key: '6.1.1', label: 'v6.1.1 (Atual)' },
+    { key: '6.1.0', label: 'v6.1.0' },
     { key: '7.0', label: 'v7.0 (Firebase)' },
     { key: '6.0', label: 'v6.0' },
     { key: 'legacy', label: 'v1.0 – v5.0' },

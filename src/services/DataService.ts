@@ -930,6 +930,24 @@ function getV610QaItems(): QaChecklistItem[] {
   }));
 }
 
+function getV611QaItems(): QaChecklistItem[] {
+  const now = Date.now();
+  const titles = [
+    '[v6.1.1] Isolamento do Leaflet em componente React.memo independente com div#map fixa (position: absolute; inset: 0; z-index: 0) sem alterar className ou remontar',
+    '[v6.1.1] Leitura do modo de marcação (Polícia Militar / veículos / "Onde eu estou") via addingStateRef sem re-renderizar o mapa',
+    '[v6.1.1] Overlays 100% flutuantes (dock inferior, barra rápida, banner "Onde eu estou") e troca de estilo via tileLayerRef.current.setUrl()',
+  ];
+  return titles.map((title, i) => ({
+    id: `qa-v611-${i + 1}`,
+    section: 'features' as const,
+    title,
+    done: true,
+    qaStatus: 'pending' as const,
+    versionTag: '6.1.1',
+    createdAt: now + 611 + i,
+  }));
+}
+
 function getRequiredRoadmapItems(): QaChecklistItem[] {
   const now = Date.now();
   const items: { id: string; title: string; versionTag?: string }[] = [
@@ -1004,7 +1022,7 @@ function createSeedQaChangelog(): QaChangelogState {
   }));
 
   return {
-    version: '6.1.0',
+    version: '6.1.1',
     items: [
       ...v1Features,
       ...getV2QaItems(),
@@ -1018,6 +1036,7 @@ function createSeedQaChangelog(): QaChangelogState {
       ...getV50QaItems(),
       ...getV60QaItems(),
       ...getV610QaItems(),
+      ...getV611QaItems(),
       ...getRequiredRoadmapItems(),
     ],
     releases: [
@@ -1102,6 +1121,13 @@ function createSeedQaChangelog(): QaChangelogState {
         releaseType: 'minor',
         summary:
           'v6.1.0 (Correção definitiva do mapa, estilo Escuro Limpo CARTO, separação Sair vs. Pânico e Checklist QA): TileLayer preservado sem recarregamento ao marcar veículos, seletor flutuante Padrão vs. Escuro Limpo sem API key, limpeza de sessão/cache unificada (Sair volta ao login; Cadeado sai direto para Google) e checklist interativo restaurado no badge de versão.',
+        releasedAt: now - 10000,
+      },
+      {
+        version: '6.1.1',
+        releaseType: 'minor',
+        summary:
+          'v6.1.1 (Isolamento Total do Container do Mapa em React.memo): Mapa Leaflet isolado com div#map fixa (inset: 0), controle de marcação via addingStateRef sem re-renderizar, troca de estilo via tileLayerRef.setUrl() e todos os botões/barras como overlays flutuantes.',
         releasedAt: now,
       },
     ],
@@ -1699,6 +1725,13 @@ class MultiOrgDataService {
           }
         });
 
+        getV611QaItems().forEach((v611Item) => {
+          if (!nextItems.some((item) => item.id === v611Item.id)) {
+            nextItems.push(v611Item);
+            qaChanged = true;
+          }
+        });
+
         getRequiredRoadmapItems().forEach((roadItem) => {
           const normalizedTitle = roadItem.title.toLowerCase();
           const alreadyExists = nextItems.some(
@@ -1737,9 +1770,10 @@ class MultiOrgDataService {
           nextVersion === '4.4-Final' ||
           nextVersion === '4.5-RC' ||
           nextVersion === '5.0' ||
-          nextVersion === '6.0'
+          nextVersion === '6.0' ||
+          nextVersion === '6.1.0'
         ) {
-          nextVersion = '6.1.0';
+          nextVersion = '6.1.1';
           qaChanged = true;
         }
 
@@ -1871,6 +1905,17 @@ class MultiOrgDataService {
             releaseType: 'minor',
             summary:
               'v6.1.0 (Correção definitiva do mapa, estilo Escuro Limpo CARTO, separação Sair vs. Pânico e Checklist QA): TileLayer preservado sem recarregamento ao marcar veículos, seletor flutuante Padrão vs. Escuro Limpo sem API key, limpeza de sessão/cache unificada (Sair volta ao login; Cadeado sai direto para Google) e checklist interativo restaurado no badge de versão.',
+            releasedAt: Date.now() - 10000,
+          });
+          qaChanged = true;
+        }
+
+        if (!nextReleases.some((r) => r.version === '6.1.1')) {
+          nextReleases.push({
+            version: '6.1.1',
+            releaseType: 'minor',
+            summary:
+              'v6.1.1 (Isolamento Total do Container do Mapa em React.memo): Mapa Leaflet isolado com div#map fixa (inset: 0), controle de marcação via addingStateRef sem re-renderizar, troca de estilo via tileLayerRef.setUrl() e todos os botões/barras como overlays flutuantes.',
             releasedAt: Date.now(),
           });
           qaChanged = true;

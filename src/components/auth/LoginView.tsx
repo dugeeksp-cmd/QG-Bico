@@ -9,7 +9,7 @@ interface LoginViewProps {
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({
-  version = '6.1.0',
+  version = '6.1.1',
   onLogin,
   onQuickTestLogin,
   onOpenVersionQa,

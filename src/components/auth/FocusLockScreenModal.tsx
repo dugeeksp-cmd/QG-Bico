@@ -27,7 +27,7 @@ function getInitials(name: string): string {
 
 export const FocusLockScreenModal: React.FC<FocusLockScreenModalProps> = ({
   isOpen,
-  version = '6.1.0',
+  version = '6.1.1',
   currentUser,
   isQuickTestSession,
   onVerifyPassword,

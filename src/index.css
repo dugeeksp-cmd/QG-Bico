@@ -60,6 +60,10 @@
   color: #475569 !important;
 }
 
+.radar-map-stage .leaflet-bottom {
+  bottom: 70px;
+}
+
 /* Modo Limpo / Noturno Azul: fundo marinho profundo e ruas em azul destacado sem poluição de POIs */
 .radar-map-clean-blue.leaflet-container {
   background: #071329 !important;
